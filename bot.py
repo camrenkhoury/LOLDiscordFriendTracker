@@ -1,7 +1,7 @@
 import asyncio
 update_lock = asyncio.Lock()
 import discord
-from discord.ext import commands
+from discord.ext import commands, tasks
 from analytics import compute_top_duos
 from storage import load_data, save_data, upsert_player, now_utc_iso
 from records import window_3am_to_3am_local, compute_wl_kda, compute_top_flex_stacks, SEASON_START_LOCAL, _game_start_local
@@ -20,10 +20,119 @@ intents.message_content = True  # must also be enabled in Discord Developer Port
 
 bot = commands.Bot(command_prefix=COMMAND_PREFIX, intents=intents)
 
+async def incremental_update_core(
+    ctx=None,
+    notify_channel_id: int | None = None,
+):
+    """
+    Core incremental update logic.
+    Used by:
+      - !updaterecords
+      - hourly background task
+    """
+
+    if update_lock.locked():
+        if ctx:
+            await ctx.send("⚠️ Update already running.")
+        return
+
+    async with update_lock:
+        if ctx:
+            await ctx.send("⏳ Updating records (fetching new matches)...")
+
+        data = load_data()
+        if not data.get("players"):
+            if ctx:
+                await ctx.send("No players added yet.")
+            return
+
+        start_local, _ = window_3am_to_3am_local()
+        cutoff_local = start_local - timedelta(hours=6)
+
+        new_matches = 0
+        filled_missing = 0
+        errors = 0
+
+        for riot_id, p in data["players"].items():
+            puuid = p["puuid"]
+            data["player_match_index"].setdefault(riot_id, [])
+            known = set(data["player_match_index"][riot_id])
+
+            # ---- fill missing match JSON ----
+            for mid in list(known):
+                if mid in data.get("matches", {}):
+                    continue
+                try:
+                    m = await asyncio.to_thread(get_match, mid)
+                except Exception:
+                    errors += 1
+                    continue
+
+                t_local = _game_start_local(m)
+                if t_local and t_local < cutoff_local:
+                    continue
+
+                data["matches"][mid] = m
+                filled_missing += 1
+
+            # ---- fetch new match IDs ----
+            try:
+                match_ids = await asyncio.to_thread(get_match_ids_by_puuid, puuid, 25)
+            except Exception:
+                errors += 1
+                continue
+
+            for mid in match_ids:
+                if mid in data["matches"]:
+                    if mid not in known:
+                        data["player_match_index"][riot_id].append(mid)
+                    continue
+
+                try:
+                    m = await asyncio.to_thread(get_match, mid)
+                except Exception:
+                    errors += 1
+                    continue
+
+                t_local = _game_start_local(m)
+                if t_local and t_local < cutoff_local:
+                    break
+
+                data["matches"][mid] = m
+                data["player_match_index"][riot_id].append(mid)
+                new_matches += 1
+
+            save_data(data)
+
+        data["last_update_utc"] = now_utc_iso()
+        save_data(data)
+
+        if ctx:
+            await ctx.send(
+                f"✅ Update complete. "
+                f"New: **{new_matches}**, "
+                f"Filled: **{filled_missing}**, "
+                f"Errors: **{errors}**."
+            )
+
+        if notify_channel_id:
+            channel = bot.get_channel(notify_channel_id)
+            if channel:
+                await channel.send(
+                    f"⏱️ Hourly update complete — "
+                    f"new: {new_matches}, filled: {filled_missing}, errors: {errors}"
+                )
+
+@tasks.loop(hours=1)
+async def hourly_update_task():
+    await incremental_update_core(notify_channel_id=TEST_CHANNEL_ID)
+
+
 @bot.event
 async def on_ready():
     print(f"Logged in as {bot.user}")
-    channel = bot.get_channel(TEST_CHANNEL_ID)
+    if not hourly_update_task.is_running():
+        hourly_update_task.start()
 
 @bot.event
 async def on_command_error(ctx, error):
@@ -169,95 +278,7 @@ async def playerlist(ctx):
 
 @bot.command()
 async def updaterecords(ctx):
-    # Prevent overlapping runs
-    if update_lock.locked():
-        await ctx.send("⚠️ Update already running.")
-        return
-
-    async with update_lock:
-        await ctx.send("⏳ Updating records (fetching new matches)...")
-
-        data = load_data()
-        if not data.get("players"):
-            await ctx.send("No players added yet. Use `!addplayer Name#TAG` first.")
-            return
-
-        # Only ingest matches relevant to the active daily window (plus a small buffer)
-        start_local, end_local = window_3am_to_3am_local()
-        cutoff_local = start_local - timedelta(hours=6)
-
-        new_matches = 0
-        filled_missing = 0
-        errors = 0
-
-        for riot_id, p in data["players"].items():
-            puuid = p["puuid"]
-            data["player_match_index"].setdefault(riot_id, [])
-            known = set(data["player_match_index"][riot_id])
-
-            # --- Step 1: fill any indexed IDs missing match JSON (from prior 429 skips) ---
-            missing_ids = [mid for mid in data["player_match_index"][riot_id] if mid not in data.get("matches", {})]
-            for mid in missing_ids:
-                try:
-                    m = await asyncio.to_thread(get_match, mid)  # should retry internally on 429
-                except Exception as e:
-                    print("fill missing match detail failed:", mid, e)
-                    errors += 1
-                    continue
-
-                # stop if too old for daily window (saves work)
-                t_local = _game_start_local(m)
-                if t_local and t_local < cutoff_local:
-                    continue
-
-                data["matches"][mid] = m
-                filled_missing += 1
-
-            try:
-                # Pull only a limited number of recent match IDs
-                match_ids = await asyncio.to_thread(get_match_ids_by_puuid, puuid, 25)
-            except Exception as e:
-                print("match id fetch failed:", riot_id, e)
-                errors += 1
-                continue
-
-            # --- Step 2: fetch unseen IDs; treat "done" as having match JSON stored ---
-            for mid in match_ids:
-                # If we already have match JSON, ensure it is indexed and skip
-                if mid in data.get("matches", {}):
-                    if mid not in known:
-                        data["player_match_index"][riot_id].append(mid)
-                        known.add(mid)
-                    continue
-
-                try:
-                    m = await asyncio.to_thread(get_match, mid)  # should retry internally on 429
-                except Exception as e:
-                    print("match detail failed:", mid, e)
-                    errors += 1
-                    continue
-
-                t_local = _game_start_local(m)
-                if t_local and t_local < cutoff_local:
-                    break  # older than relevant period for daily
-
-                data["matches"][mid] = m
-                if mid not in known:
-                    data["player_match_index"][riot_id].append(mid)
-                    known.add(mid)
-                new_matches += 1
-
-            # Persist after each player so progress is visible and resilient
-            save_data(data)
-
-        data["last_update_utc"] = now_utc_iso()
-        save_data(data)
-
-        await ctx.send(
-            f"✅ Update complete. New matches stored: **{new_matches}**. "
-            f"Filled missing: **{filled_missing}**. Errors: **{errors}**."
-        )
-
+    await incremental_update_core(ctx=ctx)
 
 @bot.command()
 async def updateseason(ctx):
