@@ -49,16 +49,25 @@ def _participant_for_puuid(match, puuid):
 def _queue_id(match):
     return match.get("info", {}).get("queueId")
 
-def _game_start_local(match):
-    """
-    Match-V5 gameStartTimestamp is ms since epoch UTC.
-    Convert to America/New_York for comparing against 3AM-local windows.
-    """
-    ts = match.get("info", {}).get("gameStartTimestamp")
+def _game_start_local(m):
+    info = m.get("info", {})
+
+    ts = (
+        info.get("gameStartTimestamp")
+        or info.get("gameCreation")
+        or info.get("gameEndTimestamp")
+    )
+
     if not ts:
+        # LAST RESORT: allow match ingestion even if timing is unknown
         return None
-    dt_utc = datetime.fromtimestamp(ts / 1000, tz=timezone.utc)
-    return dt_utc.astimezone(LOCAL_TZ)
+
+    # Riot timestamps are ms
+    from datetime import datetime
+    import pytz
+
+    dt_utc = datetime.utcfromtimestamp(ts / 1000).replace(tzinfo=pytz.UTC)
+    return dt_utc.astimezone()
 
 # --------------------
 # Core stat computation
