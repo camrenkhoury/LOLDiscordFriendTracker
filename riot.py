@@ -9,7 +9,6 @@ import time
 
 DEFAULT_TIMEOUT = 10
 
-"encrypted_summoner_id": "abc123"
 
 # --------------------
 # Configuration
