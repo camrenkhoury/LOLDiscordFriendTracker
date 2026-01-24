@@ -394,11 +394,12 @@ async def updateseason(ctx):
 # --------------------
 # Daily records
 # --------------------
+
 @bot.command()
 async def dailyrecords(ctx):
     data = load_data()
     if not data.get("players"):
-        await ctx.send("No players added yet.")
+        await ctx.send("No players added yet. Use `!addsummoner Name#TAG` first.")
         return
 
     start, end = window_3am_to_3am_local()
@@ -409,22 +410,26 @@ async def dailyrecords(ctx):
         if not puuid:
             continue
 
-        mids = data["player_match_index"].get(riot_id, [])
-        matches = [data["matches"][mid] for mid in mids if mid in data["matches"]]
+        mids = data.get("player_match_index", {}).get(riot_id, [])
+        matches = [data["matches"][mid] for mid in mids if mid in data.get("matches", {})]
 
-        solo = compute_wl_kda(matches, puuid, 420, start, end)
-        flex = compute_wl_kda(matches, puuid, 440, start, end)
+        solo = compute_wl_kda(matches, puuid, queue_id=420, start=start, end=end)
+        flex = compute_wl_kda(matches, puuid, queue_id=440, start=start, end=end)
 
         aram_total = {"games": 0, "wins": 0, "losses": 0, "kda": 0.0}
-        weight = 0
+        aram_kda_weight = 0
         for qid in ARAM_QUEUES:
-            r = compute_wl_kda(matches, puuid, qid, start, end)
+            r = compute_wl_kda(matches, puuid, queue_id=qid, start=start, end=end)
             aram_total["games"] += r["games"]
             aram_total["wins"] += r["wins"]
             aram_total["losses"] += r["losses"]
             aram_total["kda"] += r["kda"] * r["games"]
-            weight += r["games"]
-        aram_total["kda"] = aram_total["kda"] / weight if weight else 0.0
+            aram_kda_weight += r["games"]
+
+        aram_total["kda"] = (
+            aram_total["kda"] / aram_kda_weight
+            if aram_kda_weight > 0 else 0.0
+        )
 
         total_games = solo["games"] + flex["games"] + aram_total["games"]
         rows.append((total_games, riot_id, solo, flex, aram_total))
@@ -434,14 +439,69 @@ async def dailyrecords(ctx):
     def wl(x): return f"{x['wins']}-{x['losses']}"
     def kda(x): return f"{x['kda']:.2f}"
 
-    lines = ["**Daily Records**", "```"]
+    NAME_W = 26
+    WL_W = 7
+    KDA_W = 5
+
+    def pad(s, w):
+        s = str(s)
+        if len(s) > w:
+            return s[: w - 1] + "…"
+        return s + (" " * (w - len(s)))
+
+    # Totals
+    solo_w = solo_l = flex_w = flex_l = aram_w = aram_l = 0
+    for _, _, solo, flex, aram in rows:
+        solo_w += solo["wins"]; solo_l += solo["losses"]
+        flex_w += flex["wins"]; flex_l += flex["losses"]
+        aram_w += aram["wins"]; aram_l += aram["losses"]
+
+    def weighted_avg_kda(idx):
+        total_g = 0
+        total_kda = 0.0
+        for _, _, solo, flex, aram in rows:
+            x = [solo, flex, aram][idx]
+            g = x["games"]
+            total_g += g
+            total_kda += x["kda"] * g
+        return (total_kda / total_g) if total_g > 0 else 0.0
+
+    solo_avg = weighted_avg_kda(0)
+    flex_avg = weighted_avg_kda(1)
+    aram_avg = weighted_avg_kda(2)
+
+    header_title = (
+        f"Daily Records "
+        f"({start:%b %d %I:%M%p} → {end:%b %d %I:%M%p} local)"
+    )
+
+    dash_len = NAME_W + 3 + (WL_W + 1 + KDA_W) * 3 + 6
+
+    lines = [
+        f"**{header_title}**",
+        "```",
+        pad("Player", NAME_W) + " | "
+        + pad("Solo WL", WL_W) + " " + pad("KDA", KDA_W) + " | "
+        + pad("Flex WL", WL_W) + " " + pad("KDA", KDA_W) + " | "
+        + pad("ARAM WL", WL_W) + " " + pad("KDA", KDA_W),
+        "-" * dash_len,
+    ]
+
     for _, riot_id, solo, flex, aram in rows:
         lines.append(
-            f"{riot_id} | "
-            f"Solo {wl(solo)} {kda(solo)} | "
-            f"Flex {wl(flex)} {kda(flex)} | "
-            f"ARAM {wl(aram)} {kda(aram)}"
+            pad(riot_id, NAME_W) + " | "
+            + pad(wl(solo), WL_W) + " " + pad(kda(solo), KDA_W) + " | "
+            + pad(wl(flex), WL_W) + " " + pad(kda(flex), KDA_W) + " | "
+            + pad(wl(aram), WL_W) + " " + pad(kda(aram), KDA_W)
         )
+
+    lines.append("-" * dash_len)
+    lines.append(
+        pad("TOTAL", NAME_W) + " | "
+        + pad(f"{solo_w}-{solo_l}", WL_W) + " " + pad(f"{solo_avg:.2f}", KDA_W) + " | "
+        + pad(f"{flex_w}-{flex_l}", WL_W) + " " + pad(f"{flex_avg:.2f}", KDA_W) + " | "
+        + pad(f"{aram_w}-{aram_l}", WL_W) + " " + pad(f"{aram_avg:.2f}", KDA_W)
+    )
     lines.append("```")
 
     live_games = get_live_games(data)
@@ -454,6 +514,7 @@ async def dailyrecords(ctx):
     lines.append("```")
 
     await ctx.send("\n".join(lines)[:1900])
+
 
 # --------------------
 # Analytics
