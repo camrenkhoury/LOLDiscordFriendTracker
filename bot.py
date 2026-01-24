@@ -4,7 +4,7 @@ import discord
 from discord.ext import commands, tasks
 from analytics import compute_top_duos
 from storage import load_data, save_data, upsert_player, now_utc_iso
-from records import window_3am_to_3am_local, compute_wl_kda, compute_top_flex_stacks, SEASON_START_LOCAL, _game_start_local
+from records import window_3am_to_3am_local, compute_wl_kda, compute_top_flex_stacks, SEASON_START_LOCAL, _game_start_local, ARAM_QUEUE
 from datetime import timedelta
 from riot import get_player_profile, get_match_ids_by_puuid, get_match
 from config import DISCORD_TOKEN, COMMAND_PREFIX, TEST_CHANNEL_ID
@@ -393,8 +393,7 @@ async def dailyrecords(ctx):
 
         solo = compute_wl_kda(matches, puuid, queue_id=420, start=start, end=end)
         flex = compute_wl_kda(matches, puuid, queue_id=440, start=start, end=end)
-        aram = compute_wl_kda(matches, puuid, queue_id=450, start=start, end=end)
-
+        aram = compute_wl_kda(matches, puuid, queue_id=ARAM_QUEUE, start=start, end=end)
         total_games = solo["games"] + flex["games"] + aram["games"]
         rows.append((total_games, riot_id, solo, flex, aram))
 

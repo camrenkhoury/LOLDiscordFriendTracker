@@ -9,6 +9,11 @@ SOLO_QUEUE = 420
 FLEX_QUEUE = 440
 ARAM_QUEUE = 450
 
+ARAM_QUEUES = {
+    450,  # Standard ARAM
+    # add event queues here once confirmed
+}
+
 # --------------------
 # Time windows (3AM -> 3AM local)
 # --------------------
@@ -67,7 +72,8 @@ def compute_wl_kda(matches, puuid, queue_id=None, start=None, end=None):
     wins = losses = 0
     k = d = a = 0
     games = 0
-
+    ARAM_QUEUE = -1  # logical ARAM bucket
+    
     for m in matches:
         t = _game_start_local(m)
         if t is None:
@@ -77,7 +83,11 @@ def compute_wl_kda(matches, puuid, queue_id=None, start=None, end=None):
             continue
         if end and t >= end:
             continue
-        if queue_id is not None and _queue_id(m) != queue_id:
+        qid = _queue_id(m)
+
+        if queue_id == ARAM_QUEUE and qid not in ARAM_QUEUES:
+            continue
+        elif queue_id is not None and queue_id != ARAM_QUEUE and qid != queue_id:
             continue
 
         me = _participant_for_puuid(m, puuid)
