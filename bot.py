@@ -687,6 +687,12 @@ async def debugpoolqueues(ctx):
     lines.append("```")
     await ctx.send("\n".join(lines)[:1900])
 
+@bot.command()
+async def livedebug(ctx):
+    data = load_data()
+    live_games = get_live_games(data)
+    await ctx.send(f"live_games_found={len(live_games)}")
+
 
 # --------------------
 # Run
