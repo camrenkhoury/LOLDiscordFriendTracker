@@ -23,11 +23,15 @@ def save_data(data):
 def now_utc_iso():
     return datetime.now(timezone.utc).isoformat()
 
-def upsert_player(data, riot_id, game_name, tag_line, puuid):
+def upsert_player(data, riot_id, game_name, tag_line, puuid, encrypted_summoner_id=None):
+    entry = data["players"].get(riot_id, {})
     data["players"][riot_id] = {
         "game_name": game_name,
         "tag_line": tag_line,
         "puuid": puuid,
-        "added_at": data["players"].get(riot_id, {}).get("added_at") or now_utc_iso()
+        "encrypted_summoner_id": encrypted_summoner_id or entry.get("encrypted_summoner_id"),
+        "added_at": entry.get("added_at") or now_utc_iso()
     }
     data["player_match_index"].setdefault(riot_id, [])
+
+

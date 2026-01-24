@@ -6,6 +6,7 @@ from analytics import compute_top_duos
 from storage import load_data, save_data, upsert_player, now_utc_iso
 from records import window_3am_to_3am_local, compute_wl_kda, compute_top_flex_stacks, SEASON_START_LOCAL, _game_start_local, ARAM_QUEUE
 from datetime import timedelta
+from live import get_live_games, format_live_games
 from riot import get_player_profile, get_match_ids_by_puuid, get_match
 from config import DISCORD_TOKEN, COMMAND_PREFIX, TEST_CHANNEL_ID
 from riot import (
@@ -158,6 +159,8 @@ async def playerinfo(ctx, riot_id: str):
     # --------------------
     try:
         info = await asyncio.to_thread(get_player_profile, game_name, tag_line)
+        summoner = await asyncio.to_thread(get_summoner_by_puuid, info["puuid"])
+        encrypted_id = summoner.get("id")
     except Exception as e:
         await ctx.send("❌ Failed to fetch player info. Check name, tag, or API key.")
         print(e)
@@ -259,7 +262,14 @@ async def addsummoner(ctx, riot_id: str):
 
     riot_key = f"{info['game_name']}#{info['tag_line']}"
     data = load_data()
-    upsert_player(data, riot_key, info["game_name"], info["tag_line"], info["puuid"])
+    upsert_player(
+    data,
+    riot_key,
+    info["game_name"],
+    info["tag_line"],
+    info["puuid"],
+    encrypted_id
+)
     save_data(data)
 
     await ctx.send(f"✅ Added: **{riot_key}**")
@@ -445,6 +455,15 @@ async def dailyrecords(ctx):
     solo_avg = weighted_avg_kda(0)
     flex_avg = weighted_avg_kda(1)
     aram_avg = weighted_avg_kda(2)
+
+     # -------- LIVE GAMES --------
+    live_games = get_live_games(data)
+    if live_games:
+        lines.append("")
+        lines.append("**LIVE GAMES**")
+        lines.append("```")
+        lines.extend(format_live_games(live_games))
+        lines.append("```")
 
     # Header
     header_title = f"Daily Records ({start:%b %d %I:%M%p} → {end:%b %d %I:%M%p} local)"

@@ -9,6 +9,8 @@ import time
 
 DEFAULT_TIMEOUT = 10
 
+"encrypted_summoner_id": "abc123"
+
 # --------------------
 # Configuration
 # --------------------
@@ -85,6 +87,8 @@ def get_player_profile(game_name: str, tag_line: str):
     puuid = account["puuid"]
 
     summoner = get_summoner_by_puuid(puuid)
+    encrypted_id = summoner["id"]
+
     ranked_entries = get_league_entries_by_puuid(puuid)
 
     return {
@@ -235,3 +239,14 @@ def get_top_mastery_by_riot_id(game_name: str, tag_line: str, top: int = 5):
             "points": int(m.get("championPoints", 0)),
         })
     return out
+
+def get_active_game(encrypted_summoner_id: str):
+    """
+    Returns active game JSON if player is in game.
+    Raises RuntimeError(404) if not in game.
+    """
+    url = (
+        f"https://{PLATFORM}.api.riotgames.com/lol/spectator/v4/"
+        f"active-games/by-summoner/{encrypted_summoner_id}"
+    )
+    return _get(url)
