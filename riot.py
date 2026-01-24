@@ -357,6 +357,7 @@ def get_active_game_by_puuid(puuid: str) -> Optional[Dict[str, Any]]:
     return _handle_response(r)
 
 
-# Backwards-compatible name if other files import get_active_game(...)
-def get_active_game(puuid: str) -> Optional[Dict[str, Any]]:
-    return get_active_game_by_puuid(puuid)
+def get_active_game(puuid: str):
+    url = f"https://{PLATFORM}.api.riotgames.com/lol/spectator/v5/active-games/by-summoner/{puuid}"
+    return _get(url)
+
