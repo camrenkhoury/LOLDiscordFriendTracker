@@ -4,30 +4,24 @@ import urllib.parse
 from typing import Any, Dict, List, Optional
 
 import requests
-from config import RIOT_API_KEY, PLATFORM as DEFAULT_PLATFORM
+from config import RIOT_API_KEY, REGION, PLATFORM
 
 DEFAULT_TIMEOUT = 10
 
-# --------------------
-# Configuration
-# --------------------
 BASE_HEADERS = {"X-Riot-Token": RIOT_API_KEY}
 
 # Keep under burst limits when looping match details
 MATCH_DETAIL_SLEEP_SEC = 0.06
 
 # Simple in-memory caches (reset when bot restarts)
-_MATCH_CACHE: Dict[str, Dict[str, Any]] = {}         # match_id -> match json
-_DDRAGON_ID_TO_NAME: Optional[Dict[int, str]] = None # champId -> champName
-_PUUID_TO_PLATFORM: Dict[str, str] = {}              # puuid -> "na1"/"euw1"/...
-_PUUID_TO_ROUTING: Dict[str, str] = {}               # puuid -> "americas"/"europe"/"asia"
+_MATCH_CACHE: Dict[str, Dict[str, Any]] = {}          # match_id -> match json
+_DDRAGON_ID_TO_NAME: Optional[Dict[int, str]] = None  # champId -> champName
 
 
 # --------------------
 # Core HTTP helpers
 # --------------------
 def _handle_response(r: requests.Response) -> Any:
-    # Make errors actionable (show URL + body)
     if r.status_code in (400, 401, 403, 404, 429):
         raise RuntimeError(
             f"HTTP {r.status_code} {r.request.method} {r.url} -> {r.text} "
@@ -43,7 +37,7 @@ def _handle_response(r: requests.Response) -> Any:
 
 def _request_with_retry(url: str, max_retries: int = 6) -> Any:
     """
-    GET with basic 429 retry. Raises on other non-2xx statuses.
+    GET with basic 429 retry. Raises on other non-2xx statuses (via _handle_response).
     """
     for _ in range(max_retries):
         r = requests.get(url, headers=BASE_HEADERS, timeout=DEFAULT_TIMEOUT)
@@ -57,7 +51,6 @@ def _request_with_retry(url: str, max_retries: int = 6) -> Any:
 
 
 def _get(url: str) -> Any:
-    # Compatibility wrapper (older code expects _get)
     return _request_with_retry(url)
 
 
@@ -65,114 +58,58 @@ def _quote(s: str) -> str:
     return urllib.parse.quote(s, safe="")
 
 
-def _routing_regions_to_try() -> List[str]:
-    # Riot routing hosts for account + match endpoints
-    return ["americas", "europe", "asia"]
+# --------------------
+# Routing/platform helpers
+# --------------------
+def _routing_host() -> str:
+    # Your config REGION is the correct routing host for NA accounts/match: "americas"
+    return REGION
+
+
+def _platform_host() -> str:
+    # Your config PLATFORM is the correct platform host for NA LoL: "na1"
+    return PLATFORM.lower()
 
 
 # --------------------
-# Riot Account (Riot ID <-> PUUID) [ROUTING: americas/europe/asia]
+# Account-V1 (Riot ID -> PUUID) [ROUTING host]
 # --------------------
 def get_account_by_riot_id(game_name: str, tag_line: str) -> Dict[str, Any]:
-    last_err: Optional[Exception] = None
-    for routing in _routing_regions_to_try():
-        url = (
-            f"https://{routing}.api.riotgames.com/riot/account/v1/accounts/by-riot-id/"
-            f"{_quote(game_name)}/{_quote(tag_line)}"
-        )
-        try:
-            data = _request_with_retry(url)
-            if isinstance(data, dict) and "puuid" in data:
-                _PUUID_TO_ROUTING[data["puuid"]] = routing
-                return data
-        except Exception as e:
-            last_err = e
-    raise RuntimeError(f"Failed to resolve Riot ID {game_name}#{tag_line}. Last error: {last_err}")
-
-
-def get_account_by_puuid(puuid: str) -> Dict[str, Any]:
-    routing = _PUUID_TO_ROUTING.get(puuid)
-    regions = [routing] if routing else []
-    regions += [r for r in _routing_regions_to_try() if r != routing]
-
-    last_err: Optional[Exception] = None
-    for routing in regions:
-        url = f"https://{routing}.api.riotgames.com/riot/account/v1/accounts/by-puuid/{puuid}"
-        try:
-            data = _request_with_retry(url)
-            if isinstance(data, dict) and data.get("puuid") == puuid:
-                _PUUID_TO_ROUTING[puuid] = routing
-                return data
-        except Exception as e:
-            last_err = e
-    raise RuntimeError(f"Failed to resolve account by PUUID. Last error: {last_err}")
-
-
-# --------------------
-# Platform lookup (PUUID -> platform shard like na1/br1/euw1)
-# Uses: /riot/account/v1/region/by-game/lol/by-puuid/{puuid}
-# --------------------
-def get_platform_by_puuid_lol(puuid: str) -> str:
-    if puuid in _PUUID_TO_PLATFORM:
-        return _PUUID_TO_PLATFORM[puuid]
-
-    routing = _PUUID_TO_ROUTING.get(puuid)
-    regions = [routing] if routing else []
-    regions += [r for r in _routing_regions_to_try() if r != routing]
-
-    last_err: Optional[Exception] = None
-    for routing in regions:
-        url = f"https://{routing}.api.riotgames.com/riot/account/v1/region/by-game/lol/by-puuid/{puuid}"
-        try:
-            resp = _request_with_retry(url)
-
-            # NEW: endpoint may return dict OR string
-            if isinstance(resp, dict):
-                platform = str(resp.get("region", "")).strip().lower()
-            else:
-                platform = str(resp).strip().strip('"').lower()
-
-            if platform:
-                _PUUID_TO_PLATFORM[puuid] = platform
-                _PUUID_TO_ROUTING[puuid] = routing
-                return platform
-
-        except Exception as e:
-            last_err = e
-
-    raise RuntimeError(f"Failed to determine platform for PUUID. Last error: {last_err}")
-
-
-# --------------------
-# Summoner + League [PLATFORM: na1/euw1/...]
-# --------------------
-def get_summoner_by_puuid(puuid: str, platform: Optional[str] = None) -> Dict[str, Any]:
-    plat = platform
-
-    # If caller accidentally passes the dict from region-by-puuid, extract region
-    if isinstance(plat, dict):
-        plat = plat.get("region") or plat.get("platform")
-
-    if not plat:
-        try:
-            plat = get_platform_by_puuid_lol(puuid)
-        except Exception:
-            plat = DEFAULT_PLATFORM
-
-    if not isinstance(plat, str) or not plat:
-        raise RuntimeError(f"Invalid platform value for summoner lookup: {plat!r}")
-
-    url = f"https://{plat}.api.riotgames.com/lol/summoner/v4/summoners/by-puuid/{puuid}"
-    data = _request_with_retry(url)
-    if not isinstance(data, dict):
-        raise RuntimeError(f"Unexpected response for summoner-by-puuid: {data!r}")
+    url = (
+        f"https://{_routing_host()}.api.riotgames.com/riot/account/v1/accounts/by-riot-id/"
+        f"{_quote(game_name)}/{_quote(tag_line)}"
+    )
+    data = _get(url)
+    if not isinstance(data, dict) or "puuid" not in data:
+        raise RuntimeError(f"Unexpected account response: {data!r}")
     return data
 
 
+def get_account_by_puuid(puuid: str) -> Dict[str, Any]:
+    url = f"https://{_routing_host()}.api.riotgames.com/riot/account/v1/accounts/by-puuid/{puuid}"
+    data = _get(url)
+    if not isinstance(data, dict) or data.get("puuid") != puuid:
+        raise RuntimeError(f"Unexpected account-by-puuid response: {data!r}")
+    return data
+
+
+# --------------------
+# Summoner-V4 [PLATFORM host]
+# --------------------
+def get_summoner_by_puuid(puuid: str) -> Dict[str, Any]:
+    url = f"https://{_platform_host()}.api.riotgames.com/lol/summoner/v4/summoners/by-puuid/{puuid}"
+    data = _get(url)
+    if not isinstance(data, dict):
+        raise RuntimeError(f"Unexpected summoner response: {data!r}")
+    return data
+
+
+# --------------------
+# League-V4 [PLATFORM host]
+# --------------------
 def get_league_entries_by_puuid(puuid: str) -> List[Dict[str, Any]]:
-    platform = get_platform_by_puuid_lol(puuid)
-    url = f"https://{platform}.api.riotgames.com/lol/league/v4/entries/by-puuid/{puuid}"
-    data = _request_with_retry(url)
+    url = f"https://{_platform_host()}.api.riotgames.com/lol/league/v4/entries/by-puuid/{puuid}"
+    data = _get(url)
     return data if isinstance(data, list) else []
 
 
@@ -180,10 +117,6 @@ def get_league_entries_by_puuid(puuid: str) -> List[Dict[str, Any]]:
 # High-level profile used by bot
 # --------------------
 def get_player_profile(game_name: str, tag_line: str) -> Dict[str, Any]:
-    """
-    Returns:
-      game_name, tag_line, puuid, summoner_level, ranked_entries
-    """
     account = get_account_by_riot_id(game_name, tag_line)
     puuid = account["puuid"]
 
@@ -200,15 +133,8 @@ def get_player_profile(game_name: str, tag_line: str) -> Dict[str, Any]:
 
 
 # --------------------
-# Match-V5 [ROUTING: americas/europe/asia]
+# Match-V5 [ROUTING host]
 # --------------------
-def _match_routing_for_puuid(puuid: str) -> List[str]:
-    routing = _PUUID_TO_ROUTING.get(puuid)
-    if routing:
-        return [routing] + [r for r in _routing_regions_to_try() if r != routing]
-    return _routing_regions_to_try()
-
-
 def get_match_ids_by_puuid(
     puuid: str,
     count: int = 20,
@@ -216,40 +142,27 @@ def get_match_ids_by_puuid(
     start: int = 0,
 ) -> List[str]:
     q = f"&queue={queue}" if queue is not None else ""
-    last_err: Optional[Exception] = None
-
-    for routing in _match_routing_for_puuid(puuid):
-        url = (
-            f"https://{routing}.api.riotgames.com/lol/match/v5/matches/by-puuid/{puuid}/ids"
-            f"?start={start}&count={count}{q}"
-        )
-        try:
-            data = _request_with_retry(url)
-            if isinstance(data, list):
-                _PUUID_TO_ROUTING[puuid] = routing
-                return data
-        except Exception as e:
-            last_err = e
-
-    raise RuntimeError(f"Failed to fetch match IDs for PUUID. Last error: {last_err}")
+    url = (
+        f"https://{_routing_host()}.api.riotgames.com/lol/match/v5/matches/by-puuid/{puuid}/ids"
+        f"?start={start}&count={count}{q}"
+    )
+    data = _get(url)
+    if not isinstance(data, list):
+        raise RuntimeError(f"Unexpected match-id list response: {data!r}")
+    return data
 
 
 def get_match(match_id: str, max_retries: int = 6) -> Dict[str, Any]:
     if match_id in _MATCH_CACHE:
         return _MATCH_CACHE[match_id]
 
-    last_err: Optional[Exception] = None
-    for routing in _routing_regions_to_try():
-        url = f"https://{routing}.api.riotgames.com/lol/match/v5/matches/{match_id}"
-        try:
-            data = _request_with_retry(url, max_retries=max_retries)
-            if isinstance(data, dict):
-                _MATCH_CACHE[match_id] = data
-                return data
-        except Exception as e:
-            last_err = e
+    url = f"https://{_routing_host()}.api.riotgames.com/lol/match/v5/matches/{match_id}"
+    data = _request_with_retry(url, max_retries=max_retries)
+    if not isinstance(data, dict):
+        raise RuntimeError(f"Unexpected match response: {data!r}")
 
-    raise RuntimeError(f"Failed to fetch match {match_id}. Last error: {last_err}")
+    _MATCH_CACHE[match_id] = data
+    return data
 
 
 def compute_recent_kda(puuid: str, count: int = 20) -> Dict[str, Any]:
@@ -273,12 +186,7 @@ def compute_recent_kda(puuid: str, count: int = 20) -> Dict[str, Any]:
     return {"kills": kills, "deaths": deaths, "assists": assists, "kda": kda, "games": len(match_ids)}
 
 
-def solo_top_champs_wl(
-    puuid: str,
-    match_count: int = 30,
-    top: int = 5,
-    solo_queue: int = 420,
-) -> List[Dict[str, Any]]:
+def solo_top_champs_wl(puuid: str, match_count: int = 30, top: int = 5, solo_queue: int = 420) -> List[Dict[str, Any]]:
     match_ids = get_match_ids_by_puuid(puuid, count=match_count, queue=solo_queue)
 
     stats: Dict[str, Dict[str, int]] = {}
@@ -320,10 +228,7 @@ def _load_ddragon_champion_id_map() -> Dict[int, str]:
     if _DDRAGON_ID_TO_NAME is not None:
         return _DDRAGON_ID_TO_NAME
 
-    versions = requests.get(
-        "https://ddragon.leagueoflegends.com/api/versions.json",
-        timeout=DEFAULT_TIMEOUT,
-    ).json()
+    versions = requests.get("https://ddragon.leagueoflegends.com/api/versions.json", timeout=DEFAULT_TIMEOUT).json()
     v = versions[0]
     champ_json = requests.get(
         f"https://ddragon.leagueoflegends.com/cdn/{v}/data/en_US/champion.json",
@@ -339,15 +244,14 @@ def _load_ddragon_champion_id_map() -> Dict[int, str]:
 
 
 # --------------------
-# Mastery (Top N) - by-puuid endpoint
+# Mastery-V4 by-puuid (no summonerId needed)
 # --------------------
 def get_top_mastery_by_puuid(puuid: str, top: int = 5) -> List[Dict[str, Any]]:
-    platform = get_platform_by_puuid_lol(puuid)
     url = (
-        f"https://{platform}.api.riotgames.com/lol/champion-mastery/v4/"
+        f"https://{_platform_host()}.api.riotgames.com/lol/champion-mastery/v4/"
         f"champion-masteries/by-puuid/{puuid}"
     )
-    mastery_list = _request_with_retry(url)
+    mastery_list = _get(url)
     if not isinstance(mastery_list, list):
         return []
 
@@ -371,17 +275,15 @@ def get_top_mastery_by_riot_id(game_name: str, tag_line: str, top: int = 5) -> L
 
 
 # --------------------
-# Spectator (LIVE GAMES) - Spectator v5 (PUUID)
+# Spectator-V5 (LIVE): by-summoner/{encryptedPUUID} => pass PUUID
 # --------------------
 def get_active_game(puuid: str) -> Optional[Dict[str, Any]]:
     """
-    GET /lol/spectator/v5/active-games/by-summoner/{encryptedPUUID}
-    Riot labels it encryptedPUUID; in practice you pass the player's PUUID.
-    Returns None if not in game (404).
+    Returns:
+      - dict if in game
+      - None if not in game (404)
     """
-    platform = get_platform_by_puuid_lol(puuid)
-    url = f"https://{platform}.api.riotgames.com/lol/spectator/v5/active-games/by-summoner/{puuid}"
-
+    url = f"https://{_platform_host()}.api.riotgames.com/lol/spectator/v5/active-games/by-summoner/{puuid}"
     r = requests.get(url, headers=BASE_HEADERS, timeout=DEFAULT_TIMEOUT)
     if r.status_code == 404:
         return None
