@@ -26,6 +26,10 @@ from riot import (
 )
 from config import DISCORD_TOKEN, COMMAND_PREFIX, TEST_CHANNEL_ID
 
+from config import PLATFORM
+from riot import get_summoner_by_puuid
+
+summ = get_summoner_by_puuid(puuid, platform=PLATFORM)
 
 # --------------------
 # Globals

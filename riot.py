@@ -138,10 +138,21 @@ def get_platform_by_puuid_lol(puuid: str) -> str:
 # --------------------
 # Summoner + League [PLATFORM: na1/euw1/...]
 # --------------------
-def get_summoner_by_puuid(puuid: str) -> Dict[str, Any]:
-    platform = get_platform_by_puuid_lol(puuid)
-    url = f"https://{platform}.api.riotgames.com/lol/summoner/v4/summoners/by-puuid/{puuid}"
-    return _request_with_retry(url)
+from config import PLATFORM
+
+def get_summoner_by_puuid(puuid: str, platform: str | None = None):
+    plat = platform or PLATFORM
+
+    # If someone accidentally passes the region lookup JSON, extract the string
+    if isinstance(plat, dict):
+        plat = plat.get("region") or plat.get("platform")  # "na1" expected
+
+    if not isinstance(plat, str) or not plat:
+        raise RuntimeError(f"Invalid platform value for summoner lookup: {plat!r}")
+
+    url = f"https://{plat}.api.riotgames.com/lol/summoner/v4/summoners/by-puuid/{puuid}"
+    return _get(url)
+
 
 
 def get_league_entries_by_puuid(puuid: str) -> List[Dict[str, Any]]:
