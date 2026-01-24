@@ -124,12 +124,19 @@ def get_platform_by_puuid_lol(puuid: str) -> str:
     for routing in regions:
         url = f"https://{routing}.api.riotgames.com/riot/account/v1/region/by-game/lol/by-puuid/{puuid}"
         try:
-            txt = _request_with_retry(url)
-            platform = str(txt).strip().strip('"').lower()
+            resp = _request_with_retry(url)
+
+            # NEW: endpoint may return dict OR string
+            if isinstance(resp, dict):
+                platform = str(resp.get("region", "")).strip().lower()
+            else:
+                platform = str(resp).strip().strip('"').lower()
+
             if platform:
                 _PUUID_TO_PLATFORM[puuid] = platform
                 _PUUID_TO_ROUTING[puuid] = routing
                 return platform
+
         except Exception as e:
             last_err = e
 
@@ -140,12 +147,12 @@ def get_platform_by_puuid_lol(puuid: str) -> str:
 # Summoner + League [PLATFORM: na1/euw1/...]
 # --------------------
 def get_summoner_by_puuid(puuid: str, platform: Optional[str] = None) -> Dict[str, Any]:
-    """
-    Summoner-V4 by PUUID (platform host).
-    If platform not provided, we try to determine it via account region-by-puuid,
-    falling back to DEFAULT_PLATFORM.
-    """
     plat = platform
+
+    # If caller accidentally passes the dict from region-by-puuid, extract region
+    if isinstance(plat, dict):
+        plat = plat.get("region") or plat.get("platform")
+
     if not plat:
         try:
             plat = get_platform_by_puuid_lol(puuid)
