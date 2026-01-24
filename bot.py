@@ -18,7 +18,6 @@ from records import (
 from live import get_live_games, format_live_games
 from riot import (
     get_player_profile,
-    get_summoner_by_puuid,     # REQUIRED for encryptedSummonerId backfill + addsummoner
     get_match_ids_by_puuid,
     get_match,
     compute_recent_kda,
@@ -171,57 +170,6 @@ async def on_command_error(ctx, error):
     print(f"Command error: {repr(error)}")
 
 
-# --------------------
-# Admin / maintenance
-# --------------------
-@bot.command()
-@commands.is_owner()
-async def backfill_encrypted_ids(ctx):
-    """
-    One-time migration:
-    Fill encryptedSummonerId ("encrypted_id") for all players in league.json.
-    Required for Spectator / LIVE GAMES.
-    """
-    data = load_data()
-    if not data.get("players"):
-        await ctx.send("No players in pool.")
-        return
-
-    updated = 0
-    skipped = 0
-    errors = 0
-
-    await ctx.send("🔄 Backfilling encrypted summoner IDs...")
-
-    for riot_id, p in data["players"].items():
-        if p.get("encrypted_id"):
-            skipped += 1
-            continue
-
-        puuid = p.get("puuid")
-        if not puuid:
-            errors += 1
-            continue
-
-        try:
-            summ = await asyncio.to_thread(get_summoner_by_puuid, puuid)
-            enc = summ.get("id")
-            if not enc:
-                errors += 1
-                continue
-            p["encrypted_id"] = enc
-            updated += 1
-        except Exception as e:
-            print("[BACKFILL ERROR]", riot_id, e)
-            errors += 1
-
-    save_data(data)
-    await ctx.send(f"✅ Backfill complete — Updated: **{updated}**, Skipped: **{skipped}**, Errors: **{errors}**.")
-
-
-# --------------------
-# Player management
-# --------------------
 @bot.command()
 async def addsummoner(ctx, riot_id: str):
     """
@@ -235,8 +183,6 @@ async def addsummoner(ctx, riot_id: str):
 
     try:
         info = await asyncio.to_thread(get_player_profile, game_name, tag_line)
-        summ = await asyncio.to_thread(get_summoner_by_puuid, info["puuid"])
-        encrypted_id = summ.get("id")
     except Exception as e:
         await ctx.send("❌ Could not verify player with Riot API.")
         print(e)
@@ -245,18 +191,18 @@ async def addsummoner(ctx, riot_id: str):
     riot_key = f"{info['game_name']}#{info['tag_line']}"
     data = load_data()
 
+    # Store only what you actually need:
     upsert_player(
         data,
         riot_key,
         info["game_name"],
         info["tag_line"],
         info["puuid"],
-        encrypted_id,
+        encrypted_id=None,  # keep signature compatible if storage.upsert_player expects it
     )
     save_data(data)
 
     await ctx.send(f"✅ Added: **{riot_key}**")
-
 
 @bot.command()
 async def playerlist(ctx):
@@ -574,13 +520,14 @@ async def dailyrecords(ctx):
     )
     lines.append("```")
 
-    # LIVE GAMES section (separate block so formatting is stable)
     live_games = get_live_games(data)
+    lines.append("**LIVE GAMES**")
+    lines.append("```")
     if live_games:
-        lines.append("**LIVE GAMES**")
-        lines.append("```")
         lines.extend(format_live_games(live_games))
-        lines.append("```")
+    else:
+        lines.append("No one in the pool is currently in-game.")
+    lines.append("```")
 
     await ctx.send("\n".join(lines)[:1900])
 
