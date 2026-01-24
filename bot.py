@@ -4,7 +4,7 @@ import discord
 from discord.ext import commands, tasks
 from analytics import compute_top_duos
 from storage import load_data, save_data, upsert_player, now_utc_iso
-from records import window_3am_to_3am_local, compute_wl_kda, compute_top_flex_stacks, SEASON_START_LOCAL, _game_start_local, ARAM_QUEUE
+from records import window_3am_to_3am_local, compute_wl_kda, compute_top_flex_stacks, SEASON_START_LOCAL, _game_start_local, ARAM_QUEUES
 from datetime import timedelta
 from live import get_live_games, format_live_games
 from riot import get_player_profile, get_match_ids_by_puuid, get_match
@@ -262,14 +262,16 @@ async def addsummoner(ctx, riot_id: str):
 
     riot_key = f"{info['game_name']}#{info['tag_line']}"
     data = load_data()
-    upsert_player(
-    data,
-    riot_key,
-    info["game_name"],
-    info["tag_line"],
-    info["puuid"],
-    encrypted_id
-)
+    def upsert_player(data, riot_id, game_name, tag_line, puuid, encrypted_id=None):
+        data["players"][riot_id] = {
+            "game_name": game_name,
+            "tag_line": tag_line,
+            "puuid": puuid,
+            "encrypted_id": encrypted_id,
+            "added_at": data["players"].get(riot_id, {}).get("added_at") or now_utc_iso()
+        }
+        data["player_match_index"].setdefault(riot_id, [])
+
     save_data(data)
 
     await ctx.send(f"✅ Added: **{riot_key}**")
@@ -456,18 +458,12 @@ async def dailyrecords(ctx):
     flex_avg = weighted_avg_kda(1)
     aram_avg = weighted_avg_kda(2)
 
-     # -------- LIVE GAMES --------
-    live_games = get_live_games(data)
-    if live_games:
-        lines.append("")
-        lines.append("**LIVE GAMES**")
-        lines.append("```")
-        lines.extend(format_live_games(live_games))
-        lines.append("```")
 
     # Header
     header_title = f"Daily Records ({start:%b %d %I:%M%p} → {end:%b %d %I:%M%p} local)"
     lines = [f"**{header_title}**", "```"]
+
+    # ---- TABLE HEADER ----
     lines.append(
         pad("Player", NAME_W) + " | "
         + pad("Solo WL", WL_W) + " " + pad("KDA", KDA_W) + " | "
@@ -476,6 +472,7 @@ async def dailyrecords(ctx):
     )
     lines.append("-" * (NAME_W + 3 + (WL_W + 1 + KDA_W) * 3 + 6))
 
+    # ---- PLAYER ROWS ----
     for _, riot_id, solo, flex, aram in rows:
         lines.append(
             pad(riot_id, NAME_W) + " | "
@@ -484,6 +481,7 @@ async def dailyrecords(ctx):
             + pad(wl(aram), WL_W) + " " + pad(kda(aram), KDA_W)
         )
 
+    # ---- TOTAL ROW ----
     lines.append("-" * (NAME_W + 3 + (WL_W + 1 + KDA_W) * 3 + 6))
     lines.append(
         pad("TOTAL", NAME_W) + " | "
@@ -491,6 +489,16 @@ async def dailyrecords(ctx):
         + pad(f"{flex_w}-{flex_l}", WL_W) + " " + pad(f"{flex_avg:.2f}", KDA_W) + " | "
         + pad(f"{aram_w}-{aram_l}", WL_W) + " " + pad(f"{aram_avg:.2f}", KDA_W)
     )
+
+    # -------- LIVE GAMES (CORRECT PLACE) --------
+    live_games = get_live_games(data)
+    if live_games:
+        lines.append("")
+        lines.append("**LIVE GAMES**")
+        lines.append("```")
+        lines.extend(format_live_games(live_games))
+        lines.append("```")
+
     lines.append("```")
 
     await ctx.send("\n".join(lines)[:1900])

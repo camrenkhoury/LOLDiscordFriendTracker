@@ -8,34 +8,22 @@ QUEUE_NAMES = {
 }
 
 def get_live_games(data):
-    """
-    Returns grouped live games involving tracked players.
-    """
-    games = {}
-
-    for riot_id, p in data.get("players", {}).items():
-        enc_id = p.get("encrypted_summoner_id")
-        if not enc_id:
+    live = []
+    for riot_id, p in data["players"].items():
+        enc = p.get("encrypted_id")
+        if not enc:
+            print(f"[LIVE] Missing encrypted_id for {riot_id}")
             continue
 
         try:
-            g = get_active_game(enc_id)
-        except Exception:
-            continue  # not in game or spectator unavailable
+            game = get_active_game(enc)
+            print(f"[LIVE] {riot_id} IS IN GAME")
+            live.append((riot_id, game))
+        except Exception as e:
+            print(f"[LIVE] {riot_id} not in game: {e}")
 
-        gid = g["gameId"]
-        games.setdefault(gid, {
-            "queueId": g.get("gameQueueConfigId"),
-            "teams": defaultdict(list),
-            "length": g.get("gameLength", 0),
-        })
+    return live
 
-        for part in g.get("participants", []):
-            if part.get("summonerId") == enc_id:
-                team = part.get("teamId")
-                games[gid]["teams"][team].append(riot_id)
-
-    return list(games.values())
 
 
 def format_live_games(games):
