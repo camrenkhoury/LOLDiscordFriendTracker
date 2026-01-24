@@ -29,8 +29,6 @@ from config import DISCORD_TOKEN, COMMAND_PREFIX, TEST_CHANNEL_ID
 from config import PLATFORM
 from riot import get_summoner_by_puuid
 
-summ = get_summoner_by_puuid(puuid, platform=PLATFORM)
-
 # --------------------
 # Globals
 # --------------------
@@ -204,6 +202,9 @@ async def addsummoner(ctx, riot_id: str):
         info["puuid"],
         encrypted_id=None,  # keep signature compatible if storage.upsert_player expects it
     )
+    if riot_key not in data["players"]:
+        await ctx.send("❌ Internal error: player not persisted.")
+        return
     save_data(data)
 
     await ctx.send(f"✅ Added: **{riot_key}**")
