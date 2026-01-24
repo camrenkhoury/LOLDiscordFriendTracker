@@ -697,6 +697,22 @@ async def topduos(ctx):
     lines.append("```")
     await ctx.send("\n".join(lines)[:1900])
 
+@bot.command()
+async def debugrecentqueues(ctx, limit: int = 30):
+    data = load_data()
+    seen = {}
+
+    for m in data.get("matches", {}).values():
+        info = m.get("info", {})
+        q = info.get("queueId")
+        seen[q] = seen.get(q, 0) + 1
+
+    lines = ["**Queue IDs currently stored:**"]
+    for q, c in sorted(seen.items(), key=lambda x: x[1], reverse=True):
+        lines.append(f"{q}: {c}")
+
+    await ctx.send("\n".join(lines)[:1900])
+
 # --------------------
 # Run
 # --------------------
