@@ -604,7 +604,7 @@ async def weeklyrecords(ctx):
             aram_total["kda"] / aram_kda_weight
             if aram_kda_weight > 0 else 0.0
         )
-        mmr_start, mmr_end, mmr_delta = get_player_mmr_snapshot(
+        mmr_start, mmr_end, mmr_delta = update_player_mmr_from_profile(
             data,
             riot_id,
             start.isoformat(),
