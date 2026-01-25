@@ -252,7 +252,7 @@ async def playerinfo(ctx, *, riot_id: str):
         recent_kda_line = "Recent KDA: (failed to load)"
 
     try:
-        mastery = await asyncio.to_thread(get_top_mastery_by_riot_id, game_name, tag_line, 5)
+        mastery = await asyncio.to_thread(get_top_mastery_by_riot_id, game_name, tag_line, 10)
         mastery_lines = "\n".join(
             f"{i+1}) {m['champion']} — M{m['level']} — {m['points']:,} pts"
             for i, m in enumerate(mastery)
@@ -261,7 +261,7 @@ async def playerinfo(ctx, *, riot_id: str):
         mastery_lines = "(unavailable)"
 
     try:
-        solo_champs = await asyncio.to_thread(solo_top_champs_wl, puuid, 20, 5, 420)
+        solo_champs = await asyncio.to_thread(solo_top_champs_wl, puuid, 30, 5, 420)
         solo_champ_lines = "\n".join(
             f"{c['champion']} — {c['wins']}-{c['losses']} ({c['wr']:.1f}%) — {c['games']} games"
             for c in solo_champs
@@ -275,8 +275,8 @@ async def playerinfo(ctx, *, riot_id: str):
         f"{solo_line}\n"
         f"{flex_line}\n\n"
         f"{recent_kda_line}\n\n"
-        f"**Top 5 Mastery**\n{mastery_lines}\n\n"
-        f"**Top 5 Solo/Duo Champs (last 20 games)**\n{solo_champ_lines}"
+        f"**Top 10 Mastery**\n{mastery_lines}\n\n"
+        f"**Top 5 Solo/Duo Champs (last 30 games)**\n{solo_champ_lines}"
     )
     await ctx.send(msg[:1900])
 
