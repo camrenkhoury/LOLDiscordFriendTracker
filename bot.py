@@ -243,7 +243,7 @@ async def playerinfo(ctx, *, riot_id: str):
             data["players"][riot_key],
             info
         )
-        
+
     save_data(data)
 
     solo_line = "Solo/Duo: Unranked"
@@ -462,9 +462,7 @@ async def dailyrecords(ctx):
 
         solo_delta = mmr_delta_since(player, "solo", start.isoformat())
         flex_delta = mmr_delta_since(player, "flex", start.isoformat())
-
         mmr_delta = solo_delta + flex_delta
-
 
         rows.append((
             total_games,
@@ -474,7 +472,6 @@ async def dailyrecords(ctx):
             aram_total,
             mmr_delta,
         ))
-
 
     rows.sort(key=lambda x: x[0], reverse=True)
 
@@ -486,7 +483,6 @@ async def dailyrecords(ctx):
     KDA_W = 5
     MMR_W = 6
 
-
     def pad(s, w):
         s = str(s)
         if len(s) > w:
@@ -495,7 +491,7 @@ async def dailyrecords(ctx):
 
     # Totals
     solo_w = solo_l = flex_w = flex_l = aram_w = aram_l = 0
-    for _, _, solo, flex, aram in rows:
+    for _, _, solo, flex, aram, _ in rows:
         solo_w += solo["wins"]; solo_l += solo["losses"]
         flex_w += flex["wins"]; flex_l += flex["losses"]
         aram_w += aram["wins"]; aram_l += aram["losses"]
@@ -503,7 +499,7 @@ async def dailyrecords(ctx):
     def weighted_avg_kda(idx):
         total_g = 0
         total_kda = 0.0
-        for _, _, solo, flex, aram in rows:
+        for _, _, solo, flex, aram, _ in rows:
             x = [solo, flex, aram][idx]
             g = x["games"]
             total_g += g
@@ -521,9 +517,9 @@ async def dailyrecords(ctx):
 
     dash_len = (
         NAME_W
-        + 3                                  # " | "
-        + (WL_W + 1 + KDA_W) * 3              # Solo / Flex / ARAM blocks
-        + 3                                  # separators between blocks
+        + 3
+        + (WL_W + 1 + KDA_W) * 3
+        + 3
         + MMR_W
     )
 
@@ -608,9 +604,11 @@ async def weeklyrecords(ctx):
             aram_total["kda"] / aram_kda_weight
             if aram_kda_weight > 0 else 0.0
         )
-
         mmr_start, mmr_end, mmr_delta = get_player_mmr_snapshot(
-            data, riot_id, start, end
+            data,
+            riot_id,
+            start.isoformat(),
+            end.isoformat()
         )
 
         total_games = solo["games"] + flex["games"] + aram_total["games"]
