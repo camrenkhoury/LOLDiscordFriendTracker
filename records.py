@@ -10,7 +10,7 @@ FLEX_QUEUE = 440
 ARAM_QUEUE = 450
 
 ARAM_QUEUES = {
-    450,  # Standard ARAM
+    450, 2400  # Standard ARAM
     # add event queues here once confirmed
 }
 
