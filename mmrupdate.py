@@ -36,6 +36,25 @@ QUEUE_MAP = {
 # Core helpers
 # --------------------
 
+
+from riot import get_player_profile
+
+def update_all_mmrs(data):
+    for riot_id, player in data.get("players", {}).items():
+        game_name = player.get("game_name")
+        tag_line = player.get("tag_line")
+
+        if not game_name or not tag_line:
+            continue
+
+        try:
+            profile = get_player_profile(game_name, tag_line)
+        except Exception as e:
+            print("[MMR] profile fetch failed:", riot_id, e)
+            continue
+
+        update_player_mmr_from_profile(player, profile)
+
 def estimate_mmr_from_rank(entry):
     tier = entry.get("tier")
     div = entry.get("rank")

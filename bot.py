@@ -10,6 +10,8 @@ from mmrupdate import (
     mmr_delta_since,
 )
 
+from mmrupdate import update_all_mmrs
+
 
 from analytics import compute_top_duos
 from storage import load_data, save_data, upsert_player, now_utc_iso
@@ -77,10 +79,13 @@ async def incremental_update_core(ctx=None, notify_channel_id: int | None = None
             data["player_match_index"].setdefault(riot_id, [])
             known_ids = set(data["player_match_index"][riot_id])
 
+            # --------------------
             # Fill missing match JSON
+            # --------------------
             for mid in list(known_ids):
                 if mid in data["matches"]:
                     continue
+
                 try:
                     m = await asyncio.to_thread(get_match, mid)
                 except Exception as e:
@@ -95,9 +100,13 @@ async def incremental_update_core(ctx=None, notify_channel_id: int | None = None
                 data["matches"][mid] = m
                 filled_missing += 1
 
+            # --------------------
             # Fetch recent match IDs
+            # --------------------
             try:
-                match_ids = await asyncio.to_thread(get_match_ids_by_puuid, puuid, 25)
+                match_ids = await asyncio.to_thread(
+                    get_match_ids_by_puuid, puuid, 25
+                )
             except Exception as e:
                 print("[match ids] failed:", riot_id, e)
                 errors += 1
@@ -122,16 +131,23 @@ async def incremental_update_core(ctx=None, notify_channel_id: int | None = None
                     break
 
                 data["matches"][mid] = m
-                if mid not in known_ids:
-                    data["player_match_index"][riot_id].append(mid)
-                    known_ids.add(mid)
+                data["player_match_index"][riot_id].append(mid)
+                known_ids.add(mid)
                 new_matches += 1
 
-            save_data(data)
+        # --------------------
+        # Update MMR snapshots (CRITICAL FIX)
+        # --------------------
+        try:
+            await asyncio.to_thread(update_all_mmrs, data)
+        except Exception as e:
+            print("[MMR update failed]", e)
 
+        # --------------------
+        # Finalize + save once
+        # --------------------
         data["last_update_utc"] = now_utc_iso()
         save_data(data)
-
 
         if ctx:
             await ctx.send(
