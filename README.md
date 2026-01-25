@@ -1,4 +1,4 @@
-# LOLDiscordFriendTracker
+# LOLDiscordFriendTracker (AI ASSISTED DEVELOPMENT)
 
 League of Legends Group Tracker (Discord Bot)
 
