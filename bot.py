@@ -6,9 +6,10 @@ import discord
 from discord.ext import commands, tasks
 
 from mmrupdate import (
-    update_all_mmrs,
-    get_player_mmr_snapshot,
+    update_player_mmr_from_profile,
+    mmr_delta_since,
 )
+
 
 from analytics import compute_top_duos
 from storage import load_data, save_data, upsert_player, now_utc_iso
@@ -131,13 +132,6 @@ async def incremental_update_core(ctx=None, notify_channel_id: int | None = None
         data["last_update_utc"] = now_utc_iso()
         save_data(data)
 
-        # Update MMR snapshots after matches update
-        try:
-            await asyncio.to_thread(update_all_mmrs, data)
-            save_data(data)
-        except Exception as e:
-            print("[MMR update failed]", e)
-
 
         if ctx:
             await ctx.send(
@@ -203,6 +197,12 @@ async def addsummoner(ctx, *, riot_id: str):
         encrypted_summoner_id=None,
     )
 
+    update_player_mmr_from_profile(
+    data["players"][riot_key],
+    info
+)
+
+
     save_data(data)
     await ctx.send(f"✅ Added: **{riot_key}**")
 
@@ -234,6 +234,17 @@ async def playerinfo(ctx, *, riot_id: str):
         await ctx.send("❌ Failed to fetch player info.")
         print(e)
         return
+    
+    data = load_data()
+    riot_key = f"{info['game_name']}#{info['tag_line']}"
+
+    if riot_key in data["players"]:
+        update_player_mmr_from_profile(
+            data["players"][riot_key],
+            info
+        )
+        
+    save_data(data)
 
     solo_line = "Solo/Duo: Unranked"
     flex_line = "Flex: Unranked"
@@ -446,9 +457,14 @@ async def dailyrecords(ctx):
         )
 
         total_games = solo["games"] + flex["games"] + aram_total["games"]
-        mmr_start, mmr_end, mmr_delta = get_player_mmr_snapshot(
-            data, riot_id, start, end
-        )
+
+        player = data["players"][riot_id]
+
+        solo_delta = mmr_delta_since(player, "solo", start.isoformat())
+        flex_delta = mmr_delta_since(player, "flex", start.isoformat())
+
+        mmr_delta = solo_delta + flex_delta
+
 
         rows.append((
             total_games,

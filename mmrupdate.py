@@ -22,9 +22,9 @@ TIER_BASE = {
 
 DIV_OFFSET = {
     "IV": 0,
-    "III": 50,
-    "II": 100,
-    "I": 150,
+    "III": 100,
+    "II": 200,
+    "I": 300,
 }
 
 QUEUE_MAP = {
