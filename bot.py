@@ -604,14 +604,14 @@ async def weeklyrecords(ctx):
             aram_total["kda"] / aram_kda_weight
             if aram_kda_weight > 0 else 0.0
         )
-        mmr_start, mmr_end, mmr_delta = update_player_mmr_from_profile(
-            data,
-            riot_id,
-            start.isoformat(),
-            end.isoformat()
-        )
 
         total_games = solo["games"] + flex["games"] + aram_total["games"]
+
+        player = data["players"][riot_id]
+        solo_delta = mmr_delta_since(player, "solo", start.isoformat())
+        flex_delta = mmr_delta_since(player, "flex", start.isoformat())
+        mmr_delta = solo_delta + flex_delta
+
         rows.append((total_games, riot_id, solo, flex, aram_total, mmr_delta))
 
     rows.sort(key=lambda x: x[0], reverse=True)
