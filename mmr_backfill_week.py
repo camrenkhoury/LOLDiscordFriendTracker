@@ -48,7 +48,6 @@ async def main():
             mmr[q]["history"].append([iso_at(backfill_time), value])
 
             # current snapshot
-            mmr[q]["history"].append([iso_at(datetime.now(timezone.utc)), value])
             mmr[q]["current"] = value
 
     save_data(data)
