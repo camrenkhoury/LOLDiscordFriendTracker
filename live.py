@@ -1,9 +1,12 @@
 from riot import get_active_game
 
 QUEUE_NAMES = {
+    400: "Draft Pick",
     420: "Solo/Duo",
     440: "Flex",
     450: "ARAM",
+    2400: "ARAM",
+    1700: "CLASH"
 }
 
 def get_live_games(data):
