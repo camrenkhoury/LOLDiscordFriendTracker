@@ -5,6 +5,11 @@ from datetime import timedelta
 import discord
 from discord.ext import commands, tasks
 
+from mmrupdate import (
+    update_all_mmrs,
+    get_player_mmr_snapshot,
+)
+
 from analytics import compute_top_duos
 from storage import load_data, save_data, upsert_player, now_utc_iso
 from records import (
@@ -24,6 +29,7 @@ from riot import (
     solo_top_champs_wl,
     get_top_mastery_by_riot_id,
 )
+
 from config import DISCORD_TOKEN, COMMAND_PREFIX, TEST_CHANNEL_ID
 
 # --------------------
@@ -124,6 +130,14 @@ async def incremental_update_core(ctx=None, notify_channel_id: int | None = None
 
         data["last_update_utc"] = now_utc_iso()
         save_data(data)
+
+        # Update MMR snapshots after matches update
+        try:
+            await asyncio.to_thread(update_all_mmrs, data)
+            save_data(data)
+        except Exception as e:
+            print("[MMR update failed]", e)
+
 
         if ctx:
             await ctx.send(
@@ -432,7 +446,19 @@ async def dailyrecords(ctx):
         )
 
         total_games = solo["games"] + flex["games"] + aram_total["games"]
-        rows.append((total_games, riot_id, solo, flex, aram_total))
+        mmr_start, mmr_end, mmr_delta = get_player_mmr_snapshot(
+            data, riot_id, start, end
+        )
+
+        rows.append((
+            total_games,
+            riot_id,
+            solo,
+            flex,
+            aram_total,
+            mmr_delta,
+        ))
+
 
     rows.sort(key=lambda x: x[0], reverse=True)
 
@@ -442,6 +468,8 @@ async def dailyrecords(ctx):
     NAME_W = 26
     WL_W = 7
     KDA_W = 5
+    MMR_W = 6
+
 
     def pad(s, w):
         s = str(s)
@@ -475,7 +503,13 @@ async def dailyrecords(ctx):
         f"({start:%b %d %I:%M%p} → {end:%b %d %I:%M%p} local)"
     )
 
-    dash_len = NAME_W + 3 + (WL_W + 1 + KDA_W) * 3 + 6
+    dash_len = (
+        NAME_W
+        + 3                                  # " | "
+        + (WL_W + 1 + KDA_W) * 3              # Solo / Flex / ARAM blocks
+        + 3                                  # separators between blocks
+        + MMR_W
+    )
 
     lines = [
         f"**{header_title}**",
@@ -483,16 +517,18 @@ async def dailyrecords(ctx):
         pad("Player", NAME_W) + " | "
         + pad("Solo WL", WL_W) + " " + pad("KDA", KDA_W) + " | "
         + pad("Flex WL", WL_W) + " " + pad("KDA", KDA_W) + " | "
-        + pad("ARAM WL", WL_W) + " " + pad("KDA", KDA_W),
+        + pad("ARAM WL", WL_W) + " " + pad("KDA", KDA_W) + " | "
+        + pad("ΔMMR", MMR_W),
         "-" * dash_len,
     ]
 
-    for _, riot_id, solo, flex, aram in rows:
+    for _, riot_id, solo, flex, aram, mmr_delta in rows:
         lines.append(
             pad(riot_id, NAME_W) + " | "
             + pad(wl(solo), WL_W) + " " + pad(kda(solo), KDA_W) + " | "
             + pad(wl(flex), WL_W) + " " + pad(kda(flex), KDA_W) + " | "
-            + pad(wl(aram), WL_W) + " " + pad(kda(aram), KDA_W)
+            + pad(wl(aram), WL_W) + " " + pad(kda(aram), KDA_W) + " | "
+            + pad(f"{mmr_delta:+}", MMR_W)
         )
 
     lines.append("-" * dash_len)
@@ -500,7 +536,8 @@ async def dailyrecords(ctx):
         pad("TOTAL", NAME_W) + " | "
         + pad(f"{solo_w}-{solo_l}", WL_W) + " " + pad(f"{solo_avg:.2f}", KDA_W) + " | "
         + pad(f"{flex_w}-{flex_l}", WL_W) + " " + pad(f"{flex_avg:.2f}", KDA_W) + " | "
-        + pad(f"{aram_w}-{aram_l}", WL_W) + " " + pad(f"{aram_avg:.2f}", KDA_W)
+        + pad(f"{aram_w}-{aram_l}", WL_W) + " " + pad(f"{aram_avg:.2f}", KDA_W) + " | "
+        + pad("—", MMR_W)
     )
     lines.append("```")
 
@@ -556,8 +593,12 @@ async def weeklyrecords(ctx):
             if aram_kda_weight > 0 else 0.0
         )
 
+        mmr_start, mmr_end, mmr_delta = get_player_mmr_snapshot(
+            data, riot_id, start, end
+        )
+
         total_games = solo["games"] + flex["games"] + aram_total["games"]
-        rows.append((total_games, riot_id, solo, flex, aram_total))
+        rows.append((total_games, riot_id, solo, flex, aram_total, mmr_delta))
 
     rows.sort(key=lambda x: x[0], reverse=True)
 
@@ -567,6 +608,7 @@ async def weeklyrecords(ctx):
     NAME_W = 26
     WL_W = 7
     KDA_W = 5
+    MMR_W = 6
 
     def pad(s, w):
         s = str(s)
@@ -576,7 +618,7 @@ async def weeklyrecords(ctx):
 
     # Totals
     solo_w = solo_l = flex_w = flex_l = aram_w = aram_l = 0
-    for _, _, solo, flex, aram in rows:
+    for _, _, solo, flex, aram, _ in rows:
         solo_w += solo["wins"]; solo_l += solo["losses"]
         flex_w += flex["wins"]; flex_l += flex["losses"]
         aram_w += aram["wins"]; aram_l += aram["losses"]
@@ -584,7 +626,7 @@ async def weeklyrecords(ctx):
     def weighted_avg_kda(idx):
         total_g = 0
         total_kda = 0.0
-        for _, _, solo, flex, aram in rows:
+        for _, _, solo, flex, aram, _ in rows:
             x = [solo, flex, aram][idx]
             g = x["games"]
             total_g += g
@@ -600,7 +642,13 @@ async def weeklyrecords(ctx):
         f"({start:%b %d %I:%M%p} → {end:%b %d %I:%M%p} local)"
     )
 
-    dash_len = NAME_W + 3 + (WL_W + 1 + KDA_W) * 3 + 6
+    dash_len = (
+        NAME_W
+        + 3
+        + (WL_W + 1 + KDA_W) * 3
+        + 3
+        + MMR_W
+    )
 
     lines = [
         f"**{header_title}**",
@@ -608,16 +656,18 @@ async def weeklyrecords(ctx):
         pad("Player", NAME_W) + " | "
         + pad("Solo WL", WL_W) + " " + pad("KDA", KDA_W) + " | "
         + pad("Flex WL", WL_W) + " " + pad("KDA", KDA_W) + " | "
-        + pad("ARAM WL", WL_W) + " " + pad("KDA", KDA_W),
+        + pad("ARAM WL", WL_W) + " " + pad("KDA", KDA_W) + " | "
+        + pad("ΔMMR", MMR_W),
         "-" * dash_len,
     ]
 
-    for _, riot_id, solo, flex, aram in rows:
+    for _, riot_id, solo, flex, aram, mmr_delta in rows:
         lines.append(
             pad(riot_id, NAME_W) + " | "
             + pad(wl(solo), WL_W) + " " + pad(kda(solo), KDA_W) + " | "
             + pad(wl(flex), WL_W) + " " + pad(kda(flex), KDA_W) + " | "
-            + pad(wl(aram), WL_W) + " " + pad(kda(aram), KDA_W)
+            + pad(wl(aram), WL_W) + " " + pad(kda(aram), KDA_W) + " | "
+            + pad(f"{mmr_delta:+}", MMR_W)
         )
 
     lines.append("-" * dash_len)
@@ -625,7 +675,8 @@ async def weeklyrecords(ctx):
         pad("TOTAL", NAME_W) + " | "
         + pad(f"{solo_w}-{solo_l}", WL_W) + " " + pad(f"{solo_avg:.2f}", KDA_W) + " | "
         + pad(f"{flex_w}-{flex_l}", WL_W) + " " + pad(f"{flex_avg:.2f}", KDA_W) + " | "
-        + pad(f"{aram_w}-{aram_l}", WL_W) + " " + pad(f"{aram_avg:.2f}", KDA_W)
+        + pad(f"{aram_w}-{aram_l}", WL_W) + " " + pad(f"{aram_avg:.2f}", KDA_W) + " | "
+        + pad("—", MMR_W)
     )
     lines.append("```")
 
