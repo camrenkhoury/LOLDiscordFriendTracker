@@ -108,21 +108,33 @@ def update_player_mmr_from_profile(player, profile):
 def mmr_delta_since(player, queue, start_iso):
     """
     Returns net MMR change since start_iso.
+    Suppresses artificial drops caused by tier promotions.
     """
     mmr = player.get("mmr", {}).get(queue)
-    if not mmr or not mmr["history"]:
+    if not mmr or len(mmr["history"]) < 2:
         return 0
 
     start = datetime.fromisoformat(start_iso)
-    base = None
-    latest = mmr["history"][-1][1]
+    history = mmr["history"]
 
-    for ts, val in mmr["history"]:
+    base_val = None
+    latest_val = history[-1][1]
+
+    for ts, val in history:
         if datetime.fromisoformat(ts) >= start:
-            base = val
+            base_val = val
             break
 
-    if base is None:
+    if base_val is None:
         return 0
 
-    return latest - base
+    delta = latest_val - base_val
+
+    # ---- PROMOTION GUARD ----
+    # Promotions cause artificial negative deltas because tier bases jump.
+    # A large negative swing on a winning period is invalid → suppress.
+    if delta < 0 and abs(delta) >= 100:
+        return 0
+
+    return delta
+
