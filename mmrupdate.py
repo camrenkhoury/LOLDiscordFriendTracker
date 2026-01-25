@@ -8,16 +8,16 @@ from storage import now_utc_iso
 # --------------------
 
 TIER_BASE = {
-    "IRON": 800,
-    "BRONZE": 950,
-    "SILVER": 1100,
-    "GOLD": 1250,
-    "PLATINUM": 1450,
-    "EMERALD": 1600,
-    "DIAMOND": 1750,
-    "MASTER": 2000,
-    "GRANDMASTER": 2150,
-    "CHALLENGER": 2300,
+    "IRON": 400,
+    "BRONZE": 800,
+    "SILVER": 1200,
+    "GOLD": 1600,
+    "PLATINUM": 2000,
+    "EMERALD": 2400,
+    "DIAMOND": 2800,
+    "MASTER": 3200,
+    "GRANDMASTER": 3600,
+    "CHALLENGER": 4000,
 }
 
 DIV_OFFSET = {
