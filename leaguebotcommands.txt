@@ -1,0 +1,19 @@
+!addsummoner <Name#TAG> Adds a player to the tracked pool using their Riot ID. Initializes profile, match tracking, and MMR.
+
+!playerlist Lists all currently tracked players.
+
+!playerinfo <Name#TAG> Shows rank, recent KDA, top mastery champions, and recent Solo/Duo champions for the player.
+
+!updaterecords Manually fetches new matches for all players and updates stored stats and MMR.
+
+!updateseason Backfills all matches since the start of the season. Slow and intended for setup or resets.
+
+!dailyrecords Shows group stats for the current day (3AM → 3AM local), including W/L, KDA, and MMR change.
+
+!weeklyrecords Shows group stats for the last 7 days, same format as daily records.
+
+!topduos Shows the best-performing Solo/Duo pairs, sorted by winrate, with a minimum game requirement.
+
+!topflexstacks Shows the top-performing Flex 5-stacks since the start of the season.
+
+!debugrecentqueues Lists all queue IDs currently stored in match data for debugging and verification.

@@ -438,6 +438,7 @@ async def updateseason(ctx):
 
 @bot.command()
 async def dailyrecords(ctx):
+    await incremental_update_core(ctx=None)
     data = load_data()
     if not data.get("players"):
         await ctx.send("No players added yet. Use `!addsummoner Name#TAG` first.")
