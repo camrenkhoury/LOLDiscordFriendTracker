@@ -197,7 +197,8 @@ def classify_game(game):
             return "HARD CARRY", "🟡"
         if player_negative > player_positive:
             return "BOOSTED", "🔵"
-        return "WIN", "🟢"
+        return "FAIR WIN", "🟢"
+
 
     else:  # LOSS
         if team_impact >= 15 and player_positive > player_negative:
@@ -211,11 +212,13 @@ def summarize_games(games):
     counts = {
         "CAKE WALK": 0,
         "HARD CARRY": 0,
+        "FAIR WIN": 0,
         "GRIEFED": 0,
         "INTER": 0,
         "BOOSTED": 0,
         "LOST CAUSE": 0,
     }
+
 
     for g in games:
         label, _ = classify_game(g)
