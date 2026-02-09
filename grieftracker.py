@@ -232,16 +232,53 @@ def evaluate_grieftracker(matches, player_puuid, games=10):
     games_count = max(1, len(per_game_breakdown))
 
     return {
-        # Average grief per game (THIS is what you interpret)
-        "grief_index": round(total_grief_index / games_count, 1),
+        "game_id": match["metadata"]["matchId"],
+        "queue_id": info.get("queueId"),
+        "win": win,
+        "game_grief_points": round(game_grief_points, 2),
 
-        # Raw accumulated grief (keep for records / extremes)
-        "raw_grief_index": round(total_grief_index, 1),
+        # -----------------------------
+        # RAW MATCH CONTEXT (ADD THIS)
+        # -----------------------------
+        "champion": player.get("championName"),
+        "kills": player.get("kills"),
+        "deaths": player.get("deaths"),
+        "assists": player.get("assists"),
+        "duration_min": round(duration_minutes, 1),
 
-        "games_analyzed": games_count,
-        "queue": "Ranked Solo/Duo",
-        "games": per_game_breakdown
+        "start_time_local": info.get("gameStartTimestamp"),
+
+        # -----------------------------
+        # Existing analytics
+        # -----------------------------
+        "team_dpm": round(team_dpm, 2),
+        "team_avg_dpm": round(team_avg_dpm, 2),
+        "player_dpm": round(player_dpm, 2),
+
+        "player_ops": player_ops,
+        "team_ops_avg": round(team_ops_avg, 2),
+
+        "afk_penalty": afk_penalty,
+        "afk_events": afk_events,
+        "low_damage_grief": low_damage_grief,
+
+        "vision_grief": round(vision_grief, 2),
+
+        "components": {
+            "team_death_burden": round(team_death_burden, 2),
+            "death_outliers": round(death_outliers, 2),
+            "player_relative_bonus": round(prpb, 2),
+            "objective_disparity": round(od, 2),
+            "low_damage_grief": low_damage_grief,
+            "afk_penalty": afk_penalty,
+            "vision_grief": round(vision_grief, 2),
+            "boosted_penalty": round(boosted_penalty, 2),
+            "team_collapse": team_collapse,
+            "clean_early_bonus": clean_early_bonus,
+            "hard_carry_bonus": hard_carry_bonus,
+        }
     }
+
 
 
 

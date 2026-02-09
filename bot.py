@@ -1,6 +1,7 @@
 # bot.py
 import asyncio
 from datetime import timedelta
+from datetime import datetime
 
 import discord
 from discord.ext import commands, tasks
@@ -358,9 +359,24 @@ async def grieftracker_cmd(ctx, *, riot_id: str):
         )
 
         lines.append(f"Grief Score: **{avg_grief}** (avg per loss)")
-        lines.append("")
-        lines.append("**Outcome Breakdown:**")
+        lines.append(
+            "_Meaning:_ This represents how much **grief was inflicted on you by teammates**, "
+            "not how much you griefed others."
+        )
 
+        if avg_grief >= 120:
+            lines.append("🧠 Interpretation: Losses were **largely unplayable** due to extreme teammate impact.")
+        elif avg_grief >= 95:
+            lines.append("🧠 Interpretation: You were **heavily griefed** in most losses.")
+        elif avg_grief >= 75:
+            lines.append("🧠 Interpretation: Teammates **frequently compromised** otherwise winnable games.")
+        elif avg_grief >= 55:
+            lines.append("🧠 Interpretation: Losses reflect **normal variance with some team issues**.")
+        else:
+            lines.append("🧠 Interpretation: Losses were **mostly fair** with limited external grief.")
+
+        lines.append("**Outcome Breakdown:**")
+        
         def add(label, emoji):
             count = summary.get(label, 0)
             if count:
@@ -439,14 +455,23 @@ async def grieftracker_cmd(ctx, *, riot_id: str):
             duration = worst.get("duration_min", "?")
             when = worst.get("start_time_local", "Unknown date")
 
+            ts = worst.get("start_time")
+            if ts:
+                dt = datetime.fromtimestamp(ts / 1000)
+                when = dt.strftime("%b %d, %I:%M %p")
+            else:
+                when = "Unknown date"
+
             lines.append("")
             lines.append("**Most Innocent LOSS:**")
             lines.append(
-                f"• {champ} — **{k}/{d}/{a}** in {duration} min\n"
+                f"• {worst['champion']} — **{worst['kills']}/{worst['deaths']}/{worst['assists']}** "
+                f"in {worst['duration_min']} min\n"
                 f"• Played on: {when}\n"
                 f"• Grief Points: **{worst['game_grief_points']}** | "
                 f"Team DPM: {worst['team_dpm']} | You: {worst['player_dpm']}"
             )
+
 
         await ctx.send("\n".join(lines))
 
