@@ -232,36 +232,13 @@ def evaluate_grieftracker(matches, player_puuid, games=10):
     games_count = max(1, len(per_game_breakdown))
 
     return {
-        "game_id": match["metadata"]["matchId"],
-        "queue_id": info.get("queueId"),
-        "win": win,
-        "game_grief_points": round(game_grief_points, 2),
-
-        # ---- ADD THESE ----
-        "champion": player.get("championName"),
-        "kills": player.get("kills"),
-        "deaths": player.get("deaths"),
-        "assists": player.get("assists"),
-        "duration_min": round(duration_minutes, 1),
-        "start_time_ms": info.get("gameStartTimestamp"),
-        # -------------------
-
-        "team_dpm": round(team_dpm, 2),
-        "team_avg_dpm": round(team_avg_dpm, 2),
-        "player_dpm": round(player_dpm, 2),
-
-        "player_ops": player_ops,
-        "team_ops_avg": round(team_ops_avg, 2),
-
-        "afk_penalty": afk_penalty,
-        "afk_events": afk_events,
-        "low_damage_grief": low_damage_grief,
-        "vision_grief": round(vision_grief, 2),
-
-        "components": {
-            ...
-        }
+        "grief_index": round(total_grief_index / games_count, 1),
+        "raw_grief_index": round(total_grief_index, 1),
+        "games_analyzed": games_count,
+        "queue": "Ranked Solo/Duo",
+        "games": per_game_breakdown
     }
+
 
 
 
@@ -446,6 +423,15 @@ def evaluate_single_game(match, player_puuid):
         "win": win,
         "game_grief_points": round(game_grief_points, 2),
 
+        # ---- PLAYER CONTEXT (FIXES ?/?/?) ----
+        "champion": player.get("championName"),
+        "kills": player.get("kills"),
+        "deaths": player.get("deaths"),
+        "assists": player.get("assists"),
+        "duration_min": round(duration_minutes, 1),
+        "start_time_ms": info.get("gameStartTimestamp"),
+
+        # ---- RATE STATS ----
         "team_dpm": round(team_dpm, 2),
         "team_avg_dpm": round(team_avg_dpm, 2),
         "player_dpm": round(player_dpm, 2),
@@ -456,9 +442,7 @@ def evaluate_single_game(match, player_puuid):
         "afk_penalty": afk_penalty,
         "afk_events": afk_events,
         "low_damage_grief": low_damage_grief,
-
         "vision_grief": round(vision_grief, 2),
-
 
         "components": {
             "team_death_burden": round(team_death_burden, 2),
@@ -474,3 +458,4 @@ def evaluate_single_game(match, player_puuid):
             "hard_carry_bonus": hard_carry_bonus,
         }
     }
+
