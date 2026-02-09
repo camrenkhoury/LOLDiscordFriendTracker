@@ -202,13 +202,14 @@ def classify_game(game):
 
 
     else:  # LOSS
-        if team_impact >= 15 and player_positive > player_negative:
+        if team_impact >= 12 and player_positive > player_negative:
             return "GRIEFED", "🔴"
+
 
         if player_negative > player_positive:
             return "INTER", "⚫"
 
-        if team_impact < 11 and player_negative <= 6:
+        if team_impact < 9 and player_negative <= 6:
             return "FAIR LOSS", "⚪"
 
         return "LOST CAUSE", "🟠"
@@ -365,13 +366,13 @@ async def grieftracker_cmd(ctx, *, riot_id: str):
         )
         lines.append("")
 
-        if avg_grief >= 120:
+        if avg_grief >= 110:
             lines.append("🧠 Interpretation: Losses were **largely unplayable** due to extreme teammate impact.")
-        elif avg_grief >= 95:
+        elif avg_grief >= 85:
             lines.append("🧠 Interpretation: You were **heavily griefed** in most losses.")
-        elif avg_grief >= 75:
+        elif avg_grief >= 65:
             lines.append("🧠 Interpretation: Teammates **frequently compromised** otherwise winnable games.")
-        elif avg_grief >= 55:
+        elif avg_grief >= 45:
             lines.append("🧠 Interpretation: Losses reflect **normal variance with some team issues**.")
         else:
             lines.append("🧠 Interpretation: Losses were **mostly fair** with limited external grief.")
@@ -448,7 +449,9 @@ async def grieftracker_cmd(ctx, *, riot_id: str):
                     innocent_losses.append(g)
 
         if innocent_losses:
-            worst = max(innocent_losses, key=lambda x: x["game_grief_points"])
+            innocent_losses.sort(key=lambda g: g["game_grief_points"])
+            worst = innocent_losses[int(len(innocent_losses) * 0.8)]
+
 
             champ = worst.get("champion", "Unknown")
             k = worst.get("kills", "?")
