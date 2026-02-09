@@ -235,36 +235,36 @@ async def playerlist(ctx):
     await ctx.send(msg[:1900])
 
 
-def grief_label(score: int):
-    if score <= 15:
+def grief_label(score: float):
+    if score <= 10:
         return "FREE LP", "🟢"
-    elif score <= 30:
+    elif score <= 20:
         return "CAKE WALK", "🟢"
-    elif score <= 55:
+    elif score <= 35:
         return "FAIR MATCHES", "🟡"
-    elif score <= 80:
+    elif score <= 55:
         return "MINOR RESISTANCE", "🟡"
-    elif score <= 120:
+    elif score <= 75:
         return "GRIEFED", "🟠"
-    elif score <= 180:
+    elif score <= 100:
         return "VERY GRIEFED", "🔴"
-    elif score <= 260:
-        return "SEVERELY GRIEFED", "🔥"
     else:
         return "STATISTICALLY ABUSED", "☠️"
 
 
-def grief_interpretation(score: int):
-    if score <= 25:
-        return "Games were fair and within normal ranked variance."
-    elif score <= 60:
-        return "Minor teammate issues occurred but did not dominate outcomes."
-    elif score <= 110:
-        return "Multiple games were meaningfully affected by teammates."
-    elif score <= 180:
-        return "Repeated grief patterns significantly impacted ranked integrity."
-    elif score <= 260:
-        return "Severe griefing occurred (AFKs, extreme feeders, non-participants)."
+def grief_interpretation(score: float):
+    if score <= 10:
+        return "Games were unusually easy. Teammates consistently enabled wins."
+    elif score <= 20:
+        return "Games were smooth with minimal disruption."
+    elif score <= 35:
+        return "Matches were fair and competitive."
+    elif score <= 55:
+        return "Some friction occurred, but outcomes were reasonable."
+    elif score <= 75:
+        return "Several games were meaningfully affected by teammates."
+    elif score <= 100:
+        return "Repeated grief patterns significantly raised game difficulty."
     else:
         return "Ranked integrity collapsed. These games were not competitive."
 

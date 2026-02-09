@@ -167,12 +167,20 @@ def evaluate_grieftracker(matches, player_puuid, games=10):
         total_grief_index += game_result["game_grief_points"]
         per_game_breakdown.append(game_result)
 
+    games_count = max(1, len(per_game_breakdown))
+
     return {
-        "grief_index": round(total_grief_index),
-        "games_analyzed": len(per_game_breakdown),
+        # Average grief per game (THIS is what you interpret)
+        "grief_index": round(total_grief_index / games_count, 1),
+
+        # Raw accumulated grief (keep for records / extremes)
+        "raw_grief_index": round(total_grief_index, 1),
+
+        "games_analyzed": games_count,
         "queue": "Ranked Solo/Duo",
         "games": per_game_breakdown
     }
+
 
 
 # -----------------------------
