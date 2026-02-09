@@ -32,6 +32,23 @@ VISION_EXPECTED_PER_MIN = 0.9
 VISION_GRIEF_WEIGHT = 8
 VISION_SUPPORT_SELF_PENALTY = -10
 
+# -----------------------------
+# Early collapse / team impact
+# -----------------------------
+
+# -----------------------------
+# Team collapse / agency loss
+# -----------------------------
+
+TEAM_COLLAPSE_WEIGHT = 70
+PLAYER_CLEAN_EARLY_BONUS = 35
+
+TEAM_DEATH_COLLAPSE_MIN = 12
+TEAM_VS_PLAYER_DEATH_RATIO = 2.5
+
+
+HARD_CARRY_BONUS = -30
+
 
 # -----------------------------
 # Ranked-only settings
@@ -149,6 +166,51 @@ def compute_vision_grief(player, team, info, prpb, win):
 
     return 0
 
+def compute_team_collapse(team, player):
+    """
+    Detects games where the team lost the game before the player had agency.
+    """
+
+    team_deaths = sum(p["deaths"] for p in team)
+    player_deaths = player["deaths"]
+
+    # Not enough deaths to matter
+    if team_deaths < TEAM_DEATH_COLLAPSE_MIN:
+        return 0
+
+    # Player is not the problem
+    if player_deaths <= 2:
+        return TEAM_COLLAPSE_WEIGHT
+
+    # Team massively out-died player
+    if team_deaths >= player_deaths * TEAM_VS_PLAYER_DEATH_RATIO:
+        return TEAM_COLLAPSE_WEIGHT
+
+    return 0
+
+
+
+def compute_hard_carry(player, team, win):
+    """
+    Detects wins where the player carried through a griefed team.
+    """
+
+    if not win:
+        return 0
+
+    team_deaths = sum(p["deaths"] for p in team)
+    team_avg_deaths = mean(p["deaths"] for p in team)
+
+    # Messy game required
+    if team_deaths < 24:
+        return 0
+
+    # Player survived meaningfully better than team
+    if player["deaths"] <= team_avg_deaths * 0.7:
+        return HARD_CARRY_BONUS
+
+    return 0
+
 # -----------------------------
 # Public entry point
 # -----------------------------
@@ -220,6 +282,8 @@ def evaluate_single_game(match, player_puuid):
                 "type": afk_type
             })
 
+    team_collapse = compute_team_collapse(team, player)
+
     # -----------------------------
     # Low Damage Grief
     # -----------------------------
@@ -277,6 +341,16 @@ def evaluate_single_game(match, player_puuid):
         prpb = dpm_delta * PRPB_WEIGHT
 
     # -----------------------------
+    # Player Clean Early Bonus
+    # -----------------------------
+
+    clean_early_bonus = 0
+    team_deaths = sum(p["deaths"] for p in team)
+
+    if player["deaths"] <= 2 and team_deaths >= TEAM_DEATH_COLLAPSE_MIN:
+        clean_early_bonus = PLAYER_CLEAN_EARLY_BONUS
+
+    # -----------------------------
     # Objective Disparity
     # -----------------------------
 
@@ -299,16 +373,20 @@ def evaluate_single_game(match, player_puuid):
     vision_grief = compute_vision_grief(
         player, team, info, prpb, win
     )
-
+    
     positive_score = (
         team_death_burden
         + death_outliers
+        + team_collapse
+        + clean_early_bonus
         + prpb
         + od
         + afk_penalty
         + low_damage_grief
         + vision_grief
     ) * amplifier
+
+
 
 
     # -----------------------------
@@ -324,10 +402,21 @@ def evaluate_single_game(match, player_puuid):
         boosted_penalty = -((player_dpm - team_avg_dpm) * BOOSTED_WEIGHT)
 
     # -----------------------------
+    # Hard Carry Bonus
+    # -----------------------------
+
+    hard_carry_bonus = compute_hard_carry(player, team, win)
+
+        # -----------------------------
     # Final Grief Points
     # -----------------------------
 
-    game_grief_points = positive_score + boosted_penalty
+    game_grief_points = (
+    positive_score
+    + boosted_penalty
+    + hard_carry_bonus
+    )
+
     game_grief_points = max(game_grief_points, MIN_GAME_SCORE)
 
     return {
@@ -359,5 +448,8 @@ def evaluate_single_game(match, player_puuid):
             "afk_penalty": afk_penalty,
             "vision_grief": round(vision_grief, 2),
             "boosted_penalty": round(boosted_penalty, 2),
+            "team_collapse": team_collapse,
+            "clean_early_bonus": clean_early_bonus,
+            "hard_carry_bonus": hard_carry_bonus,
         }
     }

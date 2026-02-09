@@ -165,6 +165,64 @@ async def incremental_update_core(ctx=None, notify_channel_id: int | None = None
                     f"new: {new_matches}, filled: {filled_missing}, errors: {errors}"
                 )
 
+def classify_game(game):
+    c = game["components"]
+
+    team_impact = (
+        c.get("team_death_burden", 0)
+        + c.get("death_outliers", 0)
+        + c.get("team_collapse", 0)
+        + c.get("afk_penalty", 0)
+    )
+
+    player_negative = (
+        c.get("low_damage_grief", 0)
+        + max(0, c.get("vision_grief", 0))
+    )
+
+    player_positive = (
+        c.get("player_relative_bonus", 0)
+        + c.get("clean_early_bonus", 0)
+        + c.get("objective_disparity", 0)
+        + abs(c.get("hard_carry_bonus", 0))
+    )
+
+    win = game["win"]
+
+    # ---- CLASSIFICATION ----
+    if win:
+        if team_impact < 5 and player_negative <= 5:
+            return "CAKE WALK", "🟢"
+        if team_impact >= 15 and player_positive > player_negative:
+            return "HARD CARRY", "🟡"
+        if player_negative > player_positive:
+            return "BOOSTED", "🔵"
+        return "WIN", "🟢"
+
+    else:  # LOSS
+        if team_impact >= 15 and player_positive > player_negative:
+            return "GRIEFED", "🔴"
+        if player_negative > player_positive:
+            return "INTER", "⚫"
+        return "LOST CAUSE", "🟠"
+
+
+def summarize_games(games):
+    counts = {
+        "CAKE WALK": 0,
+        "HARD CARRY": 0,
+        "GRIEFED": 0,
+        "INTER": 0,
+        "BOOSTED": 0,
+        "LOST CAUSE": 0,
+    }
+
+    for g in games:
+        label, _ = classify_game(g)
+        counts[label] += 1
+
+    return counts
+
 # --------------------
 # Background hourly task
 # --------------------
@@ -235,39 +293,6 @@ async def playerlist(ctx):
     await ctx.send(msg[:1900])
 
 
-def grief_label(score: float):
-    if score <= 10:
-        return "FREE LP", "🟢"
-    elif score <= 20:
-        return "CAKE WALK", "🟢"
-    elif score <= 35:
-        return "FAIR MATCHES", "🟡"
-    elif score <= 55:
-        return "MINOR RESISTANCE", "🟡"
-    elif score <= 75:
-        return "GRIEFED", "🟠"
-    elif score <= 100:
-        return "VERY GRIEFED", "🔴"
-    else:
-        return "STATISTICALLY ABUSED", "☠️"
-
-
-def grief_interpretation(score: float):
-    if score <= 10:
-        return "Games were unusually easy. Teammates consistently enabled wins."
-    elif score <= 20:
-        return "Games were smooth with minimal disruption."
-    elif score <= 35:
-        return "Matches were fair and competitive."
-    elif score <= 55:
-        return "Some friction occurred, but outcomes were reasonable."
-    elif score <= 75:
-        return "Several games were meaningfully affected by teammates."
-    elif score <= 100:
-        return "Repeated grief patterns significantly raised game difficulty."
-    else:
-        return "Ranked integrity collapsed. These games were not competitive."
-
 @bot.command(name="grieftracker")
 async def grieftracker_cmd(ctx, *, riot_id: str):
     await ctx.typing()
@@ -275,6 +300,9 @@ async def grieftracker_cmd(ctx, *, riot_id: str):
     try:
         data = load_data()
 
+        # --------------------
+        # Validation
+        # --------------------
         if riot_id not in data.get("players", {}):
             await ctx.send("Player not found. Use `!addsummoner Name#TAG` first.")
             return
@@ -299,47 +327,51 @@ async def grieftracker_cmd(ctx, *, riot_id: str):
             await ctx.send("No ranked solo/duo games found.")
             return
 
-        label, icon = grief_label(result["grief_index"])
-        interpretation = grief_interpretation(result["grief_index"])
+        games = result["games"]
 
-        # Aggregate signals over last 10 games
-        total_afks = sum(len(g["afk_events"]) for g in result["games"])
-        total_low_damage = sum(g["low_damage_grief"] for g in result["games"])
-        total_boosted = sum(
-            1 for g in result["games"]
-            if g["components"]["boosted_penalty"] < 0
-        )
+        # --------------------
+        # Classification
+        # --------------------
+        summary = summarize_games(games)
 
-        lines = [
-            "**Grief Tracker — Ranked Solo/Duo (Last 10 Games)**",
-            f"Player: `{riot_id}`",
-            "",
-            f"Grief Index: **{result['grief_index']}** → {icon} **{label}**",
-            "",
-            f"Interpretation:",
-            interpretation,
-            "",
-            "**Summary:**",
-        ]
+        # --------------------
+        # Message construction
+        # --------------------
+        lines = []
+        lines.append("**Grief Tracker — Ranked Solo/Duo (Last 10 Games)**")
+        lines.append(f"Player: `{riot_id}`")
+        lines.append("")
 
-        # Cause attribution
-        if total_afks > 0:
-            lines.append("• Major issue: AFKs / leavers on team")
-        elif total_low_damage > 50:
-            lines.append("• Major issue: Non-participating teammates (low damage)")
-        else:
-            lines.append("• No dominant grief pattern detected")
+        lines.append("**Outcome Breakdown:**")
 
-        # Responsibility check
-        if total_boosted > 0:
-            lines.append("• Player contribution: Some games may have been self-inflicted")
-        else:
-            lines.append("• Player contribution: Not the primary cause of losses")
+        def add(label, emoji):
+            count = summary.get(label, 0)
+            if count:
+                lines.append(f"{emoji} **{label}**: {count}")
+
+        add("CAKE WALK", "🟢")
+        add("HARD CARRY", "🟡")
+        add("GRIEFED", "🔴")
+        add("INTER", "⚫")
+        add("BOOSTED", "🔵")
+        add("LOST CAUSE", "🟠")
+
+        # --------------------
+        # Statistical anomaly tier
+        # --------------------
+        if summary.get("LOST CAUSE", 0) >= 5:
+            lines.append("☠️ **STATISTICAL ANOMALY** — outcomes far outside expected variance")
 
         lines.append("")
         lines.append(
-            "Meaning: This score reflects cumulative teammate impact "
-            "over the last 10 ranked games — not a single match."
+            "**How to read this:**\n"
+            "• **CAKE WALK** → won with minimal resistance\n"
+            "• **HARD CARRY** → won despite team grief\n"
+            "• **GRIEFED** → lost despite playing well\n"
+            "• **INTER** → losses driven primarily by own play\n"
+            "• **LOST CAUSE** → games were statistically unwinnable\n\n"
+            "This analysis is based on *patterns across the last 10 games*, "
+            "not a single match."
         )
 
         await ctx.send("\n".join(lines))
@@ -347,6 +379,7 @@ async def grieftracker_cmd(ctx, *, riot_id: str):
     except Exception as e:
         await ctx.send(f"Error running grief tracker: `{type(e).__name__}: {e}`")
         raise
+
 
 # --------------------
 # Player info
