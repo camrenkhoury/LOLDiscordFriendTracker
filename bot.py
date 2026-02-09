@@ -53,7 +53,9 @@ bot = commands.Bot(command_prefix=COMMAND_PREFIX, intents=intents)
 
 def wr_bar(wr: float):
     filled = min(10, max(0, int(round(wr / 10))))
-    return "▓" * filled + "░" * (10 - filled)
+    bar = "▓" * filled + "░" * (10 - filled)
+    return f"{bar} {wr:5.1f}%"
+
 
 def rank_icon(tier: str | None):
     if not tier:
@@ -141,7 +143,7 @@ def render_dashboard(rows, mode, start, end):
     WL_W = 7
     KDA_W = 5
     MMR_W = 6
-    BAR_W = 10
+    BAR_W = 16
 
     def pad(s, w):
         s = str(s)
@@ -174,7 +176,7 @@ def render_dashboard(rows, mode, start, end):
         + pad("Solo", WL_W) + " " + pad("KDA", KDA_W) + " | "
         + pad("Flex", WL_W) + " " + pad("KDA", KDA_W) + " | "
         + pad("ARAM", WL_W) + " " + pad("KDA", KDA_W) + " | "
-        + pad("ΔMMR", MMR_W) + "  WR",
+        + pad("ΔMMR", MMR_W) + "  WR%",
         "-" * dash_len,
     ]
 
@@ -316,6 +318,15 @@ async def incremental_update_core(ctx=None, notify_channel_id: int | None = None
                     f"⏱️ Hourly update complete — "
                     f"new: {new_matches}, filled: {filled_missing}, errors: {errors}"
                 )
+
+        info = await asyncio.to_thread(
+            get_player_profile,
+            p["game_name"],
+            p["tag_line"]
+        )
+
+update_player_mmr_from_profile(p, info)
+
 
 def classify_game(game):
     c = game["components"]
@@ -1367,6 +1378,8 @@ class DashboardView(discord.ui.View):
         super().__init__(timeout=600)
 
     async def _update(self, interaction, mode):
+        await interaction.response.defer()  # <-- REQUIRED
+
         data = load_data()
         start, end = get_time_window(mode)
         rows = build_leaderboard_rows(data, start, end)
@@ -1376,7 +1389,8 @@ class DashboardView(discord.ui.View):
         if live:
             content += "\n**LIVE GAMES**\n```" + "\n".join(format_live_games(live)) + "```"
 
-        await interaction.response.edit_message(content=content, view=self)
+        await interaction.edit_original_response(content=content, view=self)
+
 
     @discord.ui.button(label="Daily", style=discord.ButtonStyle.secondary)
     async def daily(self, interaction, _):
