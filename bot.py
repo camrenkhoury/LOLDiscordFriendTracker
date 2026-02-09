@@ -236,72 +236,67 @@ async def playerlist(ctx):
 
 @bot.command(name="grieftracker")
 async def grieftracker_cmd(ctx, *, riot_id: str):
-    """
-    Usage:
-    !grieftracker Name#TAG
-    """
-
     await ctx.typing()
 
     try:
-        # 1. Resolve Riot ID -> PUUID
-        puuid = riot_api.get_puuid_from_riot_id(riot_id)
+        data = load_data()
 
-        if not puuid:
-            await ctx.send("Could not resolve Riot ID.")
+        if riot_id not in data.get("players", {}):
+            await ctx.send("Player not found. Use `!addsummoner Name#TAG` first.")
             return
 
-        # 2. Fetch recent matches (you already do this elsewhere)
-        matches = riot_api.get_recent_matches(puuid, count=25)
+        player_entry = data["players"][riot_id]
+        puuid = player_entry.get("puuid")
+
+        match_ids = data.get("player_match_index", {}).get(riot_id, [])
+        matches = [
+            data["matches"][mid]
+            for mid in match_ids
+            if mid in data.get("matches", {})
+        ]
 
         if not matches:
-            await ctx.send("No recent matches found.")
+            await ctx.send("No stored matches found. Try `!updaterecords`.")
             return
 
-        # 3. Run grief analysis
         result = evaluate_grieftracker(matches, puuid, games=10)
 
         if result["games_analyzed"] == 0:
             await ctx.send("No ranked solo/duo games found.")
             return
 
-        # 4. Find worst game
-        worst_game = max(
-            result["games"],
-            key=lambda g: g["game_grief_points"]
-        )
+        worst_game = max(result["games"], key=lambda g: g["game_grief_points"])
 
-        # 5. Build output
         lines = [
-            f"**Grief Tracker — Ranked Solo/Duo**",
+            "**Grief Tracker — Ranked Solo/Duo**",
             f"Player: `{riot_id}`",
             f"Games Analyzed: {result['games_analyzed']}",
             f"Grief Index: **{result['grief_index']}**",
             "",
-            f"**Worst Game:**",
+            "**Worst Game:**",
             f"• Grief Points: {worst_game['game_grief_points']}",
             f"• Result: {'Win' if worst_game['win'] else 'Loss'}",
         ]
 
-        # Optional detail lines
         if worst_game["afk_events"]:
-            afk_desc = ", ".join(
+            afks = ", ".join(
                 f"{e['summonerName']} ({e['type']})"
                 for e in worst_game["afk_events"]
             )
-            lines.append(f"• AFKs: {afk_desc}")
+            lines.append(f"• AFKs: {afks}")
 
         if worst_game["low_damage_grief"] > 0:
             lines.append(f"• Low Damage Impact: +{worst_game['low_damage_grief']}")
 
-        if worst_game["components"]["vision_grief"] != 0:
-            lines.append(f"• Vision Impact: {worst_game['components']['vision_grief']}")
+        vision = worst_game.get("vision_grief", 0)
+        if vision != 0:
+            lines.append(f"• Vision Impact: {vision}")
 
         await ctx.send("\n".join(lines))
 
     except Exception as e:
-        await ctx.send("Error running grief tracker.")
-        print("GriefTracker error:", e)
+        await ctx.send(f"Error running grief tracker: `{type(e).__name__}: {e}`")
+        raise
 
 # --------------------
 # Player info
