@@ -466,10 +466,26 @@ async def grieftracker_cmd(ctx, *, riot_id: str):
 
             lines.append("")
             lines.append("**Most Innocent LOSS:**")
+
+            avg_tier = worst.get("avg_teammate_tier")
+            avg_wr = worst.get("avg_teammate_wr")
+
+            extra_context = ""
+            if avg_tier or avg_wr:
+                extra_context = "• Teammates: "
+                if avg_tier:
+                    extra_context += f"Avg Rank {avg_tier}"
+                if avg_wr is not None:
+                    if avg_tier:
+                        extra_context += " | "
+                    extra_context += f"Avg WR {avg_wr:.1f}%"
+                extra_context += "\n"
+
             lines.append(
                 f"• {worst['champion']} — **{worst['kills']}/{worst['deaths']}/{worst['assists']}** "
                 f"in {worst['duration_min']} min\n"
                 f"• Played on: {when}\n"
+                f"{extra_context}"
                 f"• Grief Points: **{worst['game_grief_points']}** | "
                 f"Team death/min: {worst['team_dpm']} | You: {worst['player_dpm']}"
             )
