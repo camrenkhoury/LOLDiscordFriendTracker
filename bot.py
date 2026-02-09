@@ -13,6 +13,11 @@ from mmrupdate import (
     mmr_delta_since,
 )
 
+DASHBOARD_CACHE = {
+    "daily": None,
+    "weekly": None,
+    "season": None,
+}
 
 
 from mmrupdate import update_all_mmrs
@@ -152,6 +157,13 @@ def build_leaderboard_rows(data, start, end):
     # Sort: WR → MMR → games
     rows.sort(key=lambda r: (r[7], r[5], r[0]), reverse=True)
     return rows
+
+def update_player_rank_from_profile(player, info):
+    for entry in info.get("ranked_entries", []):
+        if entry.get("queueType") == "RANKED_SOLO_5x5":
+            player["ranked_solo_tier"] = entry.get("tier")
+            player["ranked_solo_div"] = entry.get("rank")
+            player["ranked_solo_lp"] = entry.get("leaguePoints")
 
 def render_dashboard(rows, mode, start, end):
     NAME_W = 28
@@ -333,6 +345,12 @@ async def incremental_update_core(ctx=None, notify_channel_id: int | None = None
                     f"⏱️ Hourly update complete — "
                     f"new: {new_matches}, filled: {filled_missing}, errors: {errors}"
                 )
+
+        for k in DASHBOARD_CACHE:
+            DASHBOARD_CACHE[k] = None
+            
+        update_player_rank_from_profile(p, info)
+
 
 
 def classify_game(game):
@@ -698,10 +716,8 @@ async def playerinfo(ctx, *, riot_id: str):
     riot_key = f"{info['game_name']}#{info['tag_line']}"
 
     if riot_key in data["players"]:
-        update_player_mmr_from_profile(
-            data["players"][riot_key],
-            info
-        )
+        update_player_rank_from_profile(data["players"][riot_key], info)
+        save_data(data)
 
     save_data(data)
 
@@ -937,8 +953,9 @@ async def dailyrecords(ctx):
             wr
         ))
 
-    # Sort by WR → MMR → games
-    rows.sort(key=lambda r: (r[7], r[5], r[0]), reverse=True)
+    # Sort by Games -> WR -> MMR
+    rows.sort(key=lambda r: (r[0], r[7], r[5]), reverse=True)
+
 
     def wl(x): return f"{x['wins']}-{x['losses']}"
     def kda(x): return f"{x['kda']:.2f}"
@@ -1385,18 +1402,18 @@ class DashboardView(discord.ui.View):
         super().__init__(timeout=600)
 
     async def _update(self, interaction, mode):
-        await interaction.response.defer()  # <-- REQUIRED
+        await interaction.response.defer()
 
-        data = load_data()
-        start, end = get_time_window(mode)
-        rows = build_leaderboard_rows(data, start, end)
-        content = render_dashboard(rows, mode, start, end)
+        if DASHBOARD_CACHE[mode] is None:
+            data = load_data()
+            start, end = get_time_window(mode)
+            rows = build_leaderboard_rows(data, start, end)
+            DASHBOARD_CACHE[mode] = render_dashboard(rows, mode, start, end)
 
-        live = get_live_games(data)
-        if live:
-            content += "\n**LIVE GAMES**\n```" + "\n".join(format_live_games(live)) + "```"
+        content = DASHBOARD_CACHE[mode]
 
         await interaction.edit_original_response(content=content, view=self)
+
 
 
     @discord.ui.button(label="Daily", style=discord.ButtonStyle.secondary)
