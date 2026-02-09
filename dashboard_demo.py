@@ -81,7 +81,10 @@ def build_dashboard_embed(mode: str):
 
         rows.append((riot_id, solo, flex, aram, mmr, wr))
 
-    rows.sort(key=lambda r: (r[5], r[4]), reverse=True)
+    rows.sort(
+        key=lambda r: ((r[5] or 0), (r[4] or 0)),
+        reverse=True
+    )
 
     for riot_id, solo, flex, aram, mmr, wr in rows[:10]:
         embed.add_field(
@@ -95,13 +98,16 @@ def build_dashboard_embed(mode: str):
             inline=False,
         )
 
-    live = get_live_games(data)
-    if live:
+    live_games = get_live_games(data)
+    if live_games:
+        from live import format_live_games
+        formatted = format_live_games(live_games)
         embed.add_field(
             name="LIVE GAMES",
-            value="\n".join(live),
+            value="\n".join(formatted),
             inline=False,
         )
+
 
     embed.set_footer(text="Dashboard updates live • Demo")
     return embed
