@@ -3,9 +3,6 @@ import asyncio
 from datetime import timedelta
 from datetime import datetime
 
-import dashboard_demo
-dashboard_demo.setup(bot)
-
 import discord
 from discord.ext import commands, tasks
 
@@ -50,6 +47,9 @@ intents = discord.Intents.default()
 intents.message_content = True
 bot = commands.Bot(command_prefix=COMMAND_PREFIX, intents=intents)
 
+
+import dashboard_demo
+dashboard_demo.setup(bot)
 # --------------------
 # Core incremental update
 # --------------------
