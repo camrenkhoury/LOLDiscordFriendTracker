@@ -213,19 +213,17 @@ def classify_game(game):
         return "LOST CAUSE", "🟠"
 
 
-
+def summarize_games(games):
     counts = {
         "CAKE WALK": 0,
-        "HARD CARRY": 0,
         "FAIR WIN": 0,
+        "HARD CARRY": 0,
         "FAIR LOSS": 0,
         "GRIEFED": 0,
+        "LOST CAUSE": 0,
         "INTER": 0,
         "BOOSTED": 0,
-        "LOST CAUSE": 0,
     }
-
-
 
     for g in games:
         label, _ = classify_game(g)
@@ -369,14 +367,16 @@ async def grieftracker_cmd(ctx, *, riot_id: str):
                 lines.append(f"{emoji} **{label}**: {count}")
 
         ORDERED_OUTCOMES = [
-            ("CAKE WALK", "⚪"),   # clean, effortless win
+            ("CAKE WALK", "⚪"),
             ("FAIR WIN", "🟢"),
             ("HARD CARRY", "🟡"),
+            ("FAIR LOSS", "⚪"),
             ("GRIEFED", "🔴"),
             ("LOST CAUSE", "🟠"),
             ("INTER", "⚫"),
             ("BOOSTED", "🔵"),
         ]
+
 
         for label, emoji in ORDERED_OUTCOMES:
             count = summary.get(label, 0)
