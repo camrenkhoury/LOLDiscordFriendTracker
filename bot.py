@@ -361,13 +361,20 @@ async def grieftracker_cmd(ctx, *, riot_id: str):
             if count:
                 lines.append(f"{emoji} **{label}**: {count}")
 
-        add("CAKE WALK", "🟢")
-        add("FAIR WIN", "🟢")
-        add("HARD CARRY", "🟡")
-        add("GRIEFED", "🔴")
-        add("INTER", "⚫")
-        add("BOOSTED", "🔵")
-        add("LOST CAUSE", "🟠")
+        ORDERED_OUTCOMES = [
+            ("CAKE WALK", "⚪"),   # clean, effortless win
+            ("FAIR WIN", "🟢"),
+            ("HARD CARRY", "🟡"),
+            ("GRIEFED", "🔴"),
+            ("LOST CAUSE", "🟠"),
+            ("INTER", "⚫"),
+            ("BOOSTED", "🔵"),
+        ]
+
+        for label, emoji in ORDERED_OUTCOMES:
+            count = summary.get(label, 0)
+            if count:
+                lines.append(f"{emoji} **{label}**: {count}")
 
         # --------------------
         # Statistical anomaly tier
