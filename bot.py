@@ -75,6 +75,21 @@ def rank_icon(tier: str | None):
         "CHALLENGER": "⭐",
     }.get(tier, "⚫")
 
+def resolve_solo_tier(p: dict) -> str | None:
+    # Preferred explicit field
+    tier = p.get("ranked_solo_tier")
+    if isinstance(tier, str):
+        return tier.upper()
+
+    # Fallback: ranked_entries (already stored in JSON)
+    for e in p.get("ranked_entries", []):
+        if e.get("queueType") == "RANKED_SOLO_5x5":
+            t = e.get("tier")
+            if isinstance(t, str):
+                return t.upper()
+
+    return None
+
 def get_time_window(mode: str):
     if mode == "daily":
         return window_3am_to_3am_local()
@@ -130,7 +145,7 @@ def build_leaderboard_rows(data, start, end):
             flex,
             aram,
             mmr,
-            p.get("ranked_solo_tier"),
+            resolve_solo_tier(p),
             wr
         ))
 
@@ -318,12 +333,6 @@ async def incremental_update_core(ctx=None, notify_channel_id: int | None = None
                     f"⏱️ Hourly update complete — "
                     f"new: {new_matches}, filled: {filled_missing}, errors: {errors}"
                 )
-
-        info = await asyncio.to_thread(
-            get_player_profile,
-            p["game_name"],
-            p["tag_line"]
-        )
 
 update_player_mmr_from_profile(p, info)
 
