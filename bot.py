@@ -363,6 +363,7 @@ async def grieftracker_cmd(ctx, *, riot_id: str):
             "_Meaning:_ This represents how much **grief was inflicted on you by teammates**, "
             "not how much you griefed others."
         )
+        lines.append("")
 
         if avg_grief >= 120:
             lines.append("🧠 Interpretation: Losses were **largely unplayable** due to extreme teammate impact.")
@@ -375,8 +376,9 @@ async def grieftracker_cmd(ctx, *, riot_id: str):
         else:
             lines.append("🧠 Interpretation: Losses were **mostly fair** with limited external grief.")
 
+        lines.append("")
         lines.append("**Outcome Breakdown:**")
-        
+
         def add(label, emoji):
             count = summary.get(label, 0)
             if count:
@@ -469,7 +471,7 @@ async def grieftracker_cmd(ctx, *, riot_id: str):
                 f"in {worst['duration_min']} min\n"
                 f"• Played on: {when}\n"
                 f"• Grief Points: **{worst['game_grief_points']}** | "
-                f"Team DPM: {worst['team_dpm']} | You: {worst['player_dpm']}"
+                f"Team death/min: {worst['team_dpm']} | You: {worst['player_dpm']}"
             )
 
 
