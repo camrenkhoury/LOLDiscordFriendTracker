@@ -407,10 +407,10 @@ async def grieftracker_cmd(ctx, *, riot_id: str):
             worst = max(innocent_losses, key=lambda x: x["game_grief_points"])
 
             lines.append("")
-            lines.append("**Worst Innocent Game:**")
+            lines.append("**Most Innocent LOSS:**")
             lines.append(
                 f"• **{worst['game_grief_points']} grief points** — "
-                f"Team DPM: {worst['team_dpm']} | "
+                f"Team Death/min: {worst['team_dpm']} | "
                 f"You: {worst['player_dpm']}"
             )
 
