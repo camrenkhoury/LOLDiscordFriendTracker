@@ -207,7 +207,7 @@ def classify_game(game):
         if player_negative > player_positive:
             return "INTER", "⚫"
 
-        if team_impact < 10 and player_negative <= 5:
+        if team_impact < 11 and player_negative <= 6:
             return "FAIR LOSS", "⚪"
 
         return "LOST CAUSE", "🟠"
@@ -386,8 +386,19 @@ async def grieftracker_cmd(ctx, *, riot_id: str):
         # --------------------
         # Statistical anomaly tier
         # --------------------
-        if summary.get("LOST CAUSE", 0) >= 5:
-            lines.append("☠️ **STATISTICAL ANOMALY** — outcomes far outside expected variance")
+        unplayable = (
+            summary.get("LOST CAUSE", 0)
+            + summary.get("GRIEFED", 0)
+        )
+
+        if unplayable >= 7:
+            lines.append(
+                "☠️ **ABSOLUTELY COOKED** — majority of games were effectively unplayable"
+            )
+        elif summary.get("LOST CAUSE", 0) >= 5:
+            lines.append(
+                "☠️ **STATISTICAL ANOMALY** — outcomes far outside expected variance"
+            )
 
         lines.append("")
         lines.append(
@@ -421,15 +432,24 @@ async def grieftracker_cmd(ctx, *, riot_id: str):
         if innocent_losses:
             worst = max(innocent_losses, key=lambda x: x["game_grief_points"])
 
+            champ = worst.get("champion", "Unknown")
+            k = worst.get("kills", "?")
+            d = worst.get("deaths", "?")
+            a = worst.get("assists", "?")
+            duration = worst.get("duration_min", "?")
+            when = worst.get("start_time_local", "Unknown date")
+
             lines.append("")
             lines.append("**Most Innocent LOSS:**")
             lines.append(
-                f"• **{worst['game_grief_points']} grief points** — "
-                f"Team Death/min: {worst['team_dpm']} | "
-                f"You: {worst['player_dpm']}"
+                f"• {champ} — **{k}/{d}/{a}** in {duration} min\n"
+                f"• Played on: {when}\n"
+                f"• Grief Points: **{worst['game_grief_points']}** | "
+                f"Team DPM: {worst['team_dpm']} | You: {worst['player_dpm']}"
             )
 
         await ctx.send("\n".join(lines))
+
 
     except Exception as e:
         await ctx.send(f"Error running grief tracker: `{type(e).__name__}: {e}`")
