@@ -237,20 +237,15 @@ def evaluate_grieftracker(matches, player_puuid, games=10):
         "win": win,
         "game_grief_points": round(game_grief_points, 2),
 
-        # -----------------------------
-        # RAW MATCH CONTEXT (ADD THIS)
-        # -----------------------------
+        # ---- ADD THESE ----
         "champion": player.get("championName"),
         "kills": player.get("kills"),
         "deaths": player.get("deaths"),
         "assists": player.get("assists"),
         "duration_min": round(duration_minutes, 1),
+        "start_time_ms": info.get("gameStartTimestamp"),
+        # -------------------
 
-        "start_time_local": info.get("gameStartTimestamp"),
-
-        # -----------------------------
-        # Existing analytics
-        # -----------------------------
         "team_dpm": round(team_dpm, 2),
         "team_avg_dpm": round(team_avg_dpm, 2),
         "player_dpm": round(player_dpm, 2),
@@ -261,21 +256,10 @@ def evaluate_grieftracker(matches, player_puuid, games=10):
         "afk_penalty": afk_penalty,
         "afk_events": afk_events,
         "low_damage_grief": low_damage_grief,
-
         "vision_grief": round(vision_grief, 2),
 
         "components": {
-            "team_death_burden": round(team_death_burden, 2),
-            "death_outliers": round(death_outliers, 2),
-            "player_relative_bonus": round(prpb, 2),
-            "objective_disparity": round(od, 2),
-            "low_damage_grief": low_damage_grief,
-            "afk_penalty": afk_penalty,
-            "vision_grief": round(vision_grief, 2),
-            "boosted_penalty": round(boosted_penalty, 2),
-            "team_collapse": team_collapse,
-            "clean_early_bonus": clean_early_bonus,
-            "hard_carry_bonus": hard_carry_bonus,
+            ...
         }
     }
 
