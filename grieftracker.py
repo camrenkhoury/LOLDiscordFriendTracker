@@ -213,14 +213,6 @@ def evaluate_single_game(match, player_puuid):
             })
 
     # -----------------------------
-    # Vision / Warding Grief
-    # -----------------------------
-
-    vision_grief = compute_vision_grief(
-        player, team, info, prpb, win
-    )
-
-    # -----------------------------
     # Low Damage Grief
     # -----------------------------
 
@@ -291,6 +283,14 @@ def evaluate_single_game(match, player_puuid):
 
     win = player["win"]
     amplifier = LOSS_AMPLIFIER if not win else WIN_AMPLIFIER
+
+    # -----------------------------
+    # Vision / Warding Grief
+    # -----------------------------
+
+    vision_grief = compute_vision_grief(
+        player, team, info, prpb, win
+    )
 
     positive_score = (
         team_death_burden
