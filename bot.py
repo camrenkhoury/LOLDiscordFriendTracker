@@ -234,6 +234,40 @@ async def playerlist(ctx):
     msg = "**Player Pool:**\n" + "\n".join(f"- {p}" for p in players)
     await ctx.send(msg[:1900])
 
+
+def grief_label(score: int):
+    if score <= 15:
+        return "FREE LP", "🟢"
+    elif score <= 30:
+        return "CAKE WALK", "🟢"
+    elif score <= 55:
+        return "FAIR MATCHES", "🟡"
+    elif score <= 80:
+        return "MINOR RESISTANCE", "🟡"
+    elif score <= 120:
+        return "GRIEFED", "🟠"
+    elif score <= 180:
+        return "VERY GRIEFED", "🔴"
+    elif score <= 260:
+        return "SEVERELY GRIEFED", "🔥"
+    else:
+        return "STATISTICALLY ABUSED", "☠️"
+
+
+def grief_interpretation(score: int):
+    if score <= 25:
+        return "Games were fair and within normal ranked variance."
+    elif score <= 60:
+        return "Minor teammate issues occurred but did not dominate outcomes."
+    elif score <= 110:
+        return "Multiple games were meaningfully affected by teammates."
+    elif score <= 180:
+        return "Repeated grief patterns significantly impacted ranked integrity."
+    elif score <= 260:
+        return "Severe griefing occurred (AFKs, extreme feeders, non-participants)."
+    else:
+        return "Ranked integrity collapsed. These games were not competitive."
+
 @bot.command(name="grieftracker")
 async def grieftracker_cmd(ctx, *, riot_id: str):
     await ctx.typing()
@@ -265,32 +299,48 @@ async def grieftracker_cmd(ctx, *, riot_id: str):
             await ctx.send("No ranked solo/duo games found.")
             return
 
-        worst_game = max(result["games"], key=lambda g: g["game_grief_points"])
+        label, icon = grief_label(result["grief_index"])
+        interpretation = grief_interpretation(result["grief_index"])
+
+        # Aggregate signals over last 10 games
+        total_afks = sum(len(g["afk_events"]) for g in result["games"])
+        total_low_damage = sum(g["low_damage_grief"] for g in result["games"])
+        total_boosted = sum(
+            1 for g in result["games"]
+            if g["components"]["boosted_penalty"] < 0
+        )
 
         lines = [
-            "**Grief Tracker — Ranked Solo/Duo**",
+            "**Grief Tracker — Ranked Solo/Duo (Last 10 Games)**",
             f"Player: `{riot_id}`",
-            f"Games Analyzed: {result['games_analyzed']}",
-            f"Grief Index: **{result['grief_index']}**",
             "",
-            "**Worst Game:**",
-            f"• Grief Points: {worst_game['game_grief_points']}",
-            f"• Result: {'Win' if worst_game['win'] else 'Loss'}",
+            f"Grief Index: **{result['grief_index']}** → {icon} **{label}**",
+            "",
+            f"Interpretation:",
+            interpretation,
+            "",
+            "**Summary:**",
         ]
 
-        if worst_game["afk_events"]:
-            afks = ", ".join(
-                f"{e['summonerName']} ({e['type']})"
-                for e in worst_game["afk_events"]
-            )
-            lines.append(f"• AFKs: {afks}")
+        # Cause attribution
+        if total_afks > 0:
+            lines.append("• Major issue: AFKs / leavers on team")
+        elif total_low_damage > 50:
+            lines.append("• Major issue: Non-participating teammates (low damage)")
+        else:
+            lines.append("• No dominant grief pattern detected")
 
-        if worst_game["low_damage_grief"] > 0:
-            lines.append(f"• Low Damage Impact: +{worst_game['low_damage_grief']}")
+        # Responsibility check
+        if total_boosted > 0:
+            lines.append("• Player contribution: Some games may have been self-inflicted")
+        else:
+            lines.append("• Player contribution: Not the primary cause of losses")
 
-        vision = worst_game.get("vision_grief", 0)
-        if vision != 0:
-            lines.append(f"• Vision Impact: {vision}")
+        lines.append("")
+        lines.append(
+            "Meaning: This score reflects cumulative teammate impact "
+            "over the last 10 ranked games — not a single match."
+        )
 
         await ctx.send("\n".join(lines))
 
