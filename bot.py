@@ -1065,6 +1065,147 @@ async def debugrecentqueues(ctx, limit: int = 30):
 
     await ctx.send("\n".join(lines)[:1900])
 
+
+# --------------------
+# Season records (with LIVE GAMES)
+# --------------------
+@bot.command()
+async def seasonrecords(ctx):
+    data = load_data()
+    if not data.get("players"):
+        await ctx.send("No players added yet. Use `!addsummoner Name#TAG` first.")
+        return
+
+    start = SEASON_START_LOCAL
+    _, end = window_3am_to_3am_local()
+
+    rows = []
+    for riot_id, p in data["players"].items():
+        puuid = p.get("puuid")
+        if not puuid:
+            continue
+
+        mids = data.get("player_match_index", {}).get(riot_id, [])
+        matches = [data["matches"][mid] for mid in mids if mid in data.get("matches", {})]
+
+        solo = compute_wl_kda(matches, puuid, queue_id=420, start=start, end=end)
+        flex = compute_wl_kda(matches, puuid, queue_id=440, start=start, end=end)
+
+        aram_total = {"games": 0, "wins": 0, "losses": 0, "kda": 0.0}
+        aram_kda_weight = 0
+        for qid in ARAM_QUEUES:
+            r = compute_wl_kda(matches, puuid, queue_id=qid, start=start, end=end)
+            aram_total["games"] += r["games"]
+            aram_total["wins"] += r["wins"]
+            aram_total["losses"] += r["losses"]
+            aram_total["kda"] += r["kda"] * r["games"]
+            aram_kda_weight += r["games"]
+
+        aram_total["kda"] = (
+            aram_total["kda"] / aram_kda_weight
+            if aram_kda_weight > 0 else 0.0
+        )
+
+        total_games = solo["games"] + flex["games"] + aram_total["games"]
+
+        player = data["players"][riot_id]
+        solo_delta = mmr_delta_since(player, "solo", start.isoformat())
+        flex_delta = mmr_delta_since(player, "flex", start.isoformat())
+        mmr_delta = solo_delta + flex_delta
+
+        rows.append((total_games, riot_id, solo, flex, aram_total, mmr_delta))
+
+    rows.sort(key=lambda x: x[0], reverse=True)
+
+    def wl(x): return f"{x['wins']}-{x['losses']}"
+    def kda(x): return f"{x['kda']:.2f}"
+
+    NAME_W = 26
+    WL_W = 7
+    KDA_W = 5
+    MMR_W = 6
+
+    def pad(s, w):
+        s = str(s)
+        if len(s) > w:
+            return s[: w - 1] + "…"
+        return s + (" " * (w - len(s)))
+
+    # Totals
+    solo_w = solo_l = flex_w = flex_l = aram_w = aram_l = 0
+    for _, _, solo, flex, aram, _ in rows:
+        solo_w += solo["wins"]; solo_l += solo["losses"]
+        flex_w += flex["wins"]; flex_l += flex["losses"]
+        aram_w += aram["wins"]; aram_l += aram["losses"]
+
+    def weighted_avg_kda(idx):
+        total_g = 0
+        total_kda = 0.0
+        for _, _, solo, flex, aram, _ in rows:
+            x = [solo, flex, aram][idx]
+            g = x["games"]
+            total_g += g
+            total_kda += x["kda"] * g
+        return (total_kda / total_g) if total_g > 0 else 0.0
+
+    solo_avg = weighted_avg_kda(0)
+    flex_avg = weighted_avg_kda(1)
+    aram_avg = weighted_avg_kda(2)
+
+    header_title = (
+        f"Season Records "
+        f"({start:%b %d %I:%M%p} → {end:%b %d %I:%M%p} local)"
+    )
+
+    dash_len = (
+        NAME_W
+        + 3
+        + (WL_W + 1 + KDA_W) * 3
+        + 3
+        + MMR_W
+    )
+
+    lines = [
+        f"**{header_title}**",
+        "```",
+        pad("Player", NAME_W) + " | "
+        + pad("Solo WL", WL_W) + " " + pad("KDA", KDA_W) + " | "
+        + pad("Flex WL", WL_W) + " " + pad("KDA", KDA_W) + " | "
+        + pad("ARAM WL", WL_W) + " " + pad("KDA", KDA_W) + " | "
+        + pad("ΔMMR", MMR_W),
+        "-" * dash_len,
+    ]
+
+    for _, riot_id, solo, flex, aram, mmr_delta in rows:
+        lines.append(
+            pad(riot_id, NAME_W) + " | "
+            + pad(wl(solo), WL_W) + " " + pad(kda(solo), KDA_W) + " | "
+            + pad(wl(flex), WL_W) + " " + pad(kda(flex), KDA_W) + " | "
+            + pad(wl(aram), WL_W) + " " + pad(kda(aram), KDA_W) + " | "
+            + pad(f"{mmr_delta:+}", MMR_W)
+        )
+
+    lines.append("-" * dash_len)
+    lines.append(
+        pad("TOTAL", NAME_W) + " | "
+        + pad(f"{solo_w}-{solo_l}", WL_W) + " " + pad(f"{solo_avg:.2f}", KDA_W) + " | "
+        + pad(f"{flex_w}-{flex_l}", WL_W) + " " + pad(f"{flex_avg:.2f}", KDA_W) + " | "
+        + pad(f"{aram_w}-{aram_l}", WL_W) + " " + pad(f"{aram_avg:.2f}", KDA_W) + " | "
+        + pad("—", MMR_W)
+    )
+    lines.append("```")
+
+    live_games = get_live_games(data)
+    lines.append("**LIVE GAMES**")
+    lines.append("```")
+    if live_games:
+        lines.extend(format_live_games(live_games))
+    else:
+        lines.append("No one in the pool is currently in-game.")
+    lines.append("```")
+
+    await ctx.send("\n".join(lines)[:1900])
+
 # --------------------
 # Run
 # --------------------
