@@ -138,6 +138,30 @@ def compute_low_damage_grief(player, team, info):
         return 70
 
 
+# -----------------------------
+# Rank variance normalization
+# -----------------------------
+
+def rank_variance_multiplier(tier: str | None):
+    """
+    Softly scales grief severity based on rank environment.
+    Lower ranks tolerate higher deaths / chaos.
+    """
+    if not tier:
+        return 0.85  # safe default
+
+    tier = tier.upper()
+    if tier in ("IRON", "BRONZE"):
+        return 0.65
+    if tier == "SILVER":
+        return 0.75
+    if tier == "GOLD":
+        return 0.85
+    if tier == "PLATINUM":
+        return 0.95
+    return 1.0  # Diamond+
+
+
 def compute_vision_grief(player, team, info, prpb, win):
     duration_minutes = info["gameDuration"] / 60
     minutes_played = max(1, player.get("timePlayed", info["gameDuration"]) / 60)
@@ -257,6 +281,46 @@ def evaluate_single_game(match, player_puuid):
 
     team = [p for p in participants if p["teamId"] == team_id]
     teammates = [p for p in team if p["puuid"] != player_puuid]
+
+    # -----------------------------
+    # Teammate rank + winrate context
+    # -----------------------------
+
+    def teammate_wr(p):
+        wins = p.get("wins")
+        losses = p.get("losses")
+        if wins is None or losses is None:
+            return None
+        games = wins + losses
+        return round(wins / games * 100, 1) if games > 0 else None
+
+
+    teammate_tiers = []
+    teammate_wrs = []
+
+    for tm in teammates:
+        tier = tm.get("tier")
+        if tier:
+            teammate_tiers.append(tier)
+
+        wr = teammate_wr(tm)
+        if wr is not None:
+            teammate_wrs.append(wr)
+
+
+    avg_teammate_wr = (
+        round(mean(teammate_wrs), 1)
+        if teammate_wrs else None
+    )
+
+    # crude but readable tier averaging
+    def average_tier(tiers):
+        order = ["IRON", "BRONZE", "SILVER", "GOLD", "PLATINUM", "DIAMOND", "MASTER"]
+        idxs = [order.index(t) for t in tiers if t in order]
+        return order[round(mean(idxs))] if idxs else None
+
+    avg_teammate_tier = average_tier(teammate_tiers)
+
 
     # -----------------------------
     # AFK / Leaver Detection
@@ -409,11 +473,19 @@ def evaluate_single_game(match, player_puuid):
     # Final Grief Points
     # -----------------------------
 
+    # -----------------------------
+    # Rank-based normalization
+    # -----------------------------
+
+    player_tier = player.get("tier")
+    rank_mult = rank_variance_multiplier(player_tier)
+
     game_grief_points = (
-    positive_score
-    + boosted_penalty
-    + hard_carry_bonus
-    )
+        positive_score
+        + boosted_penalty
+        + hard_carry_bonus
+    ) * rank_mult
+
 
     game_grief_points = max(game_grief_points, MIN_GAME_SCORE)
 
@@ -443,6 +515,9 @@ def evaluate_single_game(match, player_puuid):
         "afk_events": afk_events,
         "low_damage_grief": low_damage_grief,
         "vision_grief": round(vision_grief, 2),
+        "avg_teammate_tier": avg_teammate_tier,
+        "avg_teammate_wr": avg_teammate_wr,
+
 
         "components": {
             "team_death_burden": round(team_death_burden, 2),
