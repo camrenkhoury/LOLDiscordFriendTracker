@@ -334,8 +334,6 @@ async def incremental_update_core(ctx=None, notify_channel_id: int | None = None
                     f"new: {new_matches}, filled: {filled_missing}, errors: {errors}"
                 )
 
-update_player_mmr_from_profile(p, info)
-
 
 def classify_game(game):
     c = game["components"]
