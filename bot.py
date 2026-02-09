@@ -13,6 +13,8 @@ from mmrupdate import (
     mmr_delta_since,
 )
 
+
+
 from mmrupdate import update_all_mmrs
 
 
@@ -48,8 +50,154 @@ intents.message_content = True
 bot = commands.Bot(command_prefix=COMMAND_PREFIX, intents=intents)
 
 
-import dashboard_demo
-dashboard_demo.setup(bot)
+
+def wr_bar(wr: float):
+    filled = min(10, max(0, int(round(wr / 10))))
+    return "▓" * filled + "░" * (10 - filled)
+
+def rank_icon(tier: str | None):
+    if not tier:
+        return "⚫"
+
+    tier = tier.upper()
+    return {
+        "IRON": "⬛",
+        "BRONZE": "🟤",
+        "SILVER": "⚪",
+        "GOLD": "🟡",
+        "PLATINUM": "🔵",
+        "EMERALD": "🟢",
+        "DIAMOND": "🔷",
+        "MASTER": "🟣",
+        "GRANDMASTER": "🔴",
+        "CHALLENGER": "⭐",
+    }.get(tier, "⚫")
+
+def get_time_window(mode: str):
+    if mode == "daily":
+        return window_3am_to_3am_local()
+    if mode == "weekly":
+        _, end = window_3am_to_3am_local()
+        return end - timedelta(days=7), end
+    # season
+    _, end = window_3am_to_3am_local()
+    return SEASON_START_LOCAL, end
+
+def build_leaderboard_rows(data, start, end):
+    rows = []
+
+    for riot_id, p in data.get("players", {}).items():
+        puuid = p.get("puuid")
+        if not puuid:
+            continue
+
+        mids = data.get("player_match_index", {}).get(riot_id, [])
+        matches = [data["matches"][m] for m in mids if m in data["matches"]]
+
+        solo = compute_wl_kda(matches, puuid, 420, start, end)
+        flex = compute_wl_kda(matches, puuid, 440, start, end)
+
+        aram = {"games": 0, "wins": 0, "losses": 0, "kda": 0.0}
+        weight = 0
+        for q in ARAM_QUEUES:
+            r = compute_wl_kda(matches, puuid, q, start, end)
+            aram["games"] += r["games"]
+            aram["wins"] += r["wins"]
+            aram["losses"] += r["losses"]
+            aram["kda"] += r["kda"] * r["games"]
+            weight += r["games"]
+
+        aram["kda"] = aram["kda"] / weight if weight else 0.0
+
+        total_games = solo["games"] + flex["games"] + aram["games"]
+        if total_games == 0:
+            continue
+
+        wins = solo["wins"] + flex["wins"] + aram["wins"]
+        wr = wins / total_games * 100
+
+        mmr = (
+            mmr_delta_since(p, "solo", start.isoformat())
+            + mmr_delta_since(p, "flex", start.isoformat())
+        )
+
+        rows.append((
+            total_games,
+            riot_id,
+            solo,
+            flex,
+            aram,
+            mmr,
+            p.get("ranked_solo_tier"),
+            wr
+        ))
+
+    # Sort: WR → MMR → games
+    rows.sort(key=lambda r: (r[7], r[5], r[0]), reverse=True)
+    return rows
+
+def render_dashboard(rows, mode, start, end):
+    NAME_W = 28
+    WL_W = 7
+    KDA_W = 5
+    MMR_W = 6
+    BAR_W = 10
+
+    def pad(s, w):
+        s = str(s)
+        if len(s) > w:
+            return s[:w-1] + "…"
+        return s + " " * (w - len(s))
+
+    def wl(x): return f"{x['wins']}-{x['losses']}"
+    def kda(x): return f"{x['kda']:.2f}"
+
+    header = (
+        f"**{mode.capitalize()} Leaderboard** "
+        f"({start:%b %d %I:%M%p} → {end:%b %d %I:%M%p} local)"
+    )
+
+    dash_len = (
+        NAME_W
+        + 3
+        + (WL_W + 1 + KDA_W) * 3
+        + 3
+        + MMR_W
+        + 2
+        + BAR_W
+    )
+
+    lines = [
+        header,
+        "```",
+        pad("Player", NAME_W) + " | "
+        + pad("Solo", WL_W) + " " + pad("KDA", KDA_W) + " | "
+        + pad("Flex", WL_W) + " " + pad("KDA", KDA_W) + " | "
+        + pad("ARAM", WL_W) + " " + pad("KDA", KDA_W) + " | "
+        + pad("ΔMMR", MMR_W) + "  WR",
+        "-" * dash_len,
+    ]
+
+    for _, riot_id, solo, flex, aram, mmr, tier, wr in rows:
+        icon = rank_icon(tier)
+        lines.append(
+            pad(f"{icon} {riot_id}", NAME_W) + " | "
+            + pad(wl(solo), WL_W) + " " + pad(kda(solo), KDA_W) + " | "
+            + pad(wl(flex), WL_W) + " " + pad(kda(flex), KDA_W) + " | "
+            + pad(wl(aram), WL_W) + " " + pad(kda(aram), KDA_W) + " | "
+            + pad(f"{mmr:+}", MMR_W) + "  "
+            + wr_bar(wr)
+        )
+
+    lines.append("```")
+    lines.append(
+        "Legend: ⭐ Challenger 🔴 GM 🟣 Master 🔷 Diamond 🟢 Emerald "
+        "🔵 Plat 🟡 Gold ⚪ Silver 🟤 Bronze ⬛ Iron"
+    )
+
+    return "\n".join(lines)
+
+
 # --------------------
 # Core incremental update
 # --------------------
@@ -290,6 +438,10 @@ async def addsummoner(ctx, *, riot_id: str):
     data["players"][riot_key],
     info
 )
+    for entry in info.get("ranked_entries", []):
+        if entry.get("queueType") == "RANKED_SOLO_5x5":
+            data["players"][riot_key]["ranked_solo_tier"] = entry.get("tier")
+
 
 
     save_data(data)
@@ -728,80 +880,72 @@ async def dailyrecords(ctx):
         mids = data.get("player_match_index", {}).get(riot_id, [])
         matches = [data["matches"][mid] for mid in mids if mid in data.get("matches", {})]
 
-        solo = compute_wl_kda(matches, puuid, queue_id=420, start=start, end=end)
-        flex = compute_wl_kda(matches, puuid, queue_id=440, start=start, end=end)
+        solo = compute_wl_kda(matches, puuid, 420, start, end)
+        flex = compute_wl_kda(matches, puuid, 440, start, end)
 
-        aram_total = {"games": 0, "wins": 0, "losses": 0, "kda": 0.0}
-        aram_kda_weight = 0
-        for qid in ARAM_QUEUES:
-            r = compute_wl_kda(matches, puuid, queue_id=qid, start=start, end=end)
-            aram_total["games"] += r["games"]
-            aram_total["wins"] += r["wins"]
-            aram_total["losses"] += r["losses"]
-            aram_total["kda"] += r["kda"] * r["games"]
-            aram_kda_weight += r["games"]
+        aram = {"games": 0, "wins": 0, "losses": 0, "kda": 0.0}
+        weight = 0
+        for q in ARAM_QUEUES:
+            r = compute_wl_kda(matches, puuid, q, start, end)
+            aram["games"] += r["games"]
+            aram["wins"] += r["wins"]
+            aram["losses"] += r["losses"]
+            aram["kda"] += r["kda"] * r["games"]
+            weight += r["games"]
+        aram["kda"] = aram["kda"] / weight if weight else 0.0
 
-        aram_total["kda"] = (
-            aram_total["kda"] / aram_kda_weight
-            if aram_kda_weight > 0 else 0.0
-        )
-
-        total_games = solo["games"] + flex["games"] + aram_total["games"]
+        total_games = solo["games"] + flex["games"] + aram["games"]
 
         player = data["players"][riot_id]
+        mmr_delta = (
+            mmr_delta_since(player, "solo", start.isoformat())
+            + mmr_delta_since(player, "flex", start.isoformat())
+        )
 
-        solo_delta = mmr_delta_since(player, "solo", start.isoformat())
-        flex_delta = mmr_delta_since(player, "flex", start.isoformat())
-        mmr_delta = solo_delta + flex_delta
+        tier = player.get("ranked_solo_tier")
+
+        wins = solo["wins"] + flex["wins"] + aram["wins"]
+        games = max(1, total_games)
+        wr = wins / games * 100
 
         rows.append((
             total_games,
             riot_id,
             solo,
             flex,
-            aram_total,
+            aram,
             mmr_delta,
+            tier,
+            wr
         ))
 
-    rows.sort(key=lambda x: x[0], reverse=True)
+    # Sort by WR → MMR → games
+    rows.sort(key=lambda r: (r[7], r[5], r[0]), reverse=True)
 
     def wl(x): return f"{x['wins']}-{x['losses']}"
     def kda(x): return f"{x['kda']:.2f}"
 
-    NAME_W = 26
+    NAME_W = 28
     WL_W = 7
     KDA_W = 5
     MMR_W = 6
+    BAR_W = 10
 
     def pad(s, w):
         s = str(s)
         if len(s) > w:
-            return s[: w - 1] + "…"
-        return s + (" " * (w - len(s)))
+            return s[:w-1] + "…"
+        return s + " " * (w - len(s))
 
     # Totals
     solo_w = solo_l = flex_w = flex_l = aram_w = aram_l = 0
-    for _, _, solo, flex, aram, _ in rows:
+    for _, _, solo, flex, aram, _, _, _ in rows:
         solo_w += solo["wins"]; solo_l += solo["losses"]
         flex_w += flex["wins"]; flex_l += flex["losses"]
         aram_w += aram["wins"]; aram_l += aram["losses"]
 
-    def weighted_avg_kda(idx):
-        total_g = 0
-        total_kda = 0.0
-        for _, _, solo, flex, aram, _ in rows:
-            x = [solo, flex, aram][idx]
-            g = x["games"]
-            total_g += g
-            total_kda += x["kda"] * g
-        return (total_kda / total_g) if total_g > 0 else 0.0
-
-    solo_avg = weighted_avg_kda(0)
-    flex_avg = weighted_avg_kda(1)
-    aram_avg = weighted_avg_kda(2)
-
-    header_title = (
-        f"Daily Records "
+    header = (
+        f"**Daily Records** "
         f"({start:%b %d %I:%M%p} → {end:%b %d %I:%M%p} local)"
     )
 
@@ -811,34 +955,38 @@ async def dailyrecords(ctx):
         + (WL_W + 1 + KDA_W) * 3
         + 3
         + MMR_W
+        + 2
+        + BAR_W
     )
 
     lines = [
-        f"**{header_title}**",
+        header,
         "```",
         pad("Player", NAME_W) + " | "
-        + pad("Solo WL", WL_W) + " " + pad("KDA", KDA_W) + " | "
-        + pad("Flex WL", WL_W) + " " + pad("KDA", KDA_W) + " | "
-        + pad("ARAM WL", WL_W) + " " + pad("KDA", KDA_W) + " | "
-        + pad("ΔMMR", MMR_W),
+        + pad("Solo", WL_W) + " " + pad("KDA", KDA_W) + " | "
+        + pad("Flex", WL_W) + " " + pad("KDA", KDA_W) + " | "
+        + pad("ARAM", WL_W) + " " + pad("KDA", KDA_W) + " | "
+        + pad("ΔMMR", MMR_W) + "  WR",
         "-" * dash_len,
     ]
 
-    for _, riot_id, solo, flex, aram, mmr_delta in rows:
+    for _, riot_id, solo, flex, aram, mmr, tier, wr in rows:
+        icon = rank_icon(tier)
         lines.append(
-            pad(riot_id, NAME_W) + " | "
+            pad(f"{icon} {riot_id}", NAME_W) + " | "
             + pad(wl(solo), WL_W) + " " + pad(kda(solo), KDA_W) + " | "
             + pad(wl(flex), WL_W) + " " + pad(kda(flex), KDA_W) + " | "
             + pad(wl(aram), WL_W) + " " + pad(kda(aram), KDA_W) + " | "
-            + pad(f"{mmr_delta:+}", MMR_W)
+            + pad(f"{mmr:+}", MMR_W) + "  "
+            + wr_bar(wr)
         )
 
     lines.append("-" * dash_len)
     lines.append(
         pad("TOTAL", NAME_W) + " | "
-        + pad(f"{solo_w}-{solo_l}", WL_W) + " " + pad(f"{solo_avg:.2f}", KDA_W) + " | "
-        + pad(f"{flex_w}-{flex_l}", WL_W) + " " + pad(f"{flex_avg:.2f}", KDA_W) + " | "
-        + pad(f"{aram_w}-{aram_l}", WL_W) + " " + pad(f"{aram_avg:.2f}", KDA_W) + " | "
+        + pad(f"{solo_w}-{solo_l}", WL_W) + "     | "
+        + pad(f"{flex_w}-{flex_l}", WL_W) + "     | "
+        + pad(f"{aram_w}-{aram_l}", WL_W) + "     | "
         + pad("—", MMR_W)
     )
     lines.append("```")
@@ -851,6 +999,11 @@ async def dailyrecords(ctx):
     else:
         lines.append("No one in the pool is currently in-game.")
     lines.append("```")
+
+    lines.append(
+        "Legend: ⭐ Challenger 🔴 GM 🟣 Master 🔷 Diamond 🟢 Emerald "
+        "🔵 Plat 🟡 Gold ⚪ Silver 🟤 Bronze ⬛ Iron"
+    )
 
     await ctx.send("\n".join(lines)[:1900])
 
@@ -1208,6 +1361,52 @@ async def seasonrecords(ctx):
     lines.append("```")
 
     await ctx.send("\n".join(lines)[:1900])
+
+class DashboardView(discord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=600)
+
+    async def _update(self, interaction, mode):
+        data = load_data()
+        start, end = get_time_window(mode)
+        rows = build_leaderboard_rows(data, start, end)
+        content = render_dashboard(rows, mode, start, end)
+
+        live = get_live_games(data)
+        if live:
+            content += "\n**LIVE GAMES**\n```" + "\n".join(format_live_games(live)) + "```"
+
+        await interaction.response.edit_message(content=content, view=self)
+
+    @discord.ui.button(label="Daily", style=discord.ButtonStyle.secondary)
+    async def daily(self, interaction, _):
+        await self._update(interaction, "daily")
+
+    @discord.ui.button(label="Weekly", style=discord.ButtonStyle.primary)
+    async def weekly(self, interaction, _):
+        await self._update(interaction, "weekly")
+
+    @discord.ui.button(label="Season", style=discord.ButtonStyle.success)
+    async def season(self, interaction, _):
+        await self._update(interaction, "season")
+
+    @discord.ui.button(label="Refresh", style=discord.ButtonStyle.gray, emoji="🔄")
+    async def refresh(self, interaction, _):
+        await self._update(interaction, "weekly")
+
+
+@bot.command()
+async def dashboard(ctx):
+    data = load_data()
+    start, end = get_time_window("weekly")
+    rows = build_leaderboard_rows(data, start, end)
+    content = render_dashboard(rows, "weekly", start, end)
+
+    live = get_live_games(data)
+    if live:
+        content += "\n**LIVE GAMES**\n```" + "\n".join(format_live_games(live)) + "```"
+
+    await ctx.send(content, view=DashboardView())
 
 # --------------------
 # Run

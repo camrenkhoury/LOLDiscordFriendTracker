@@ -14,6 +14,30 @@ from rank_baselines import (
     OUTLIER_MULTIPLIER,
 )
 
+def wr_bar(wr: float):
+    filled = min(10, max(0, int(round(wr / 10))))
+    return "▓" * filled + "░" * (10 - filled)
+
+def rank_icon(tier: str | None):
+    if not tier:
+        return "⚫"
+
+    tier = tier.upper()
+    return {
+        "IRON": "⬛",
+        "BRONZE": "🟤",
+        "SILVER": "⚪",
+        "GOLD": "🟡",
+        "PLATINUM": "🔵",
+        "EMERALD": "🟢",
+        "DIAMOND": "🔷",
+        "MASTER": "🟣",
+        "GRANDMASTER": "🔴",
+        "CHALLENGER": "⭐",
+    }.get(tier, "⚫")
+
+
+
 
 
 # -----------------------------
