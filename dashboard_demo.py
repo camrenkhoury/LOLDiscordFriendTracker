@@ -1,3 +1,4 @@
+import time
 import discord
 from discord.ext import commands
 from datetime import timedelta
@@ -14,6 +15,28 @@ from live import get_live_games, format_live_games
 
 
 # --------------------
+# LIVE CACHE (dashboard-side only)
+# --------------------
+
+_LIVE_CACHE = {
+    "ts": 0.0,
+    "data": None,
+}
+LIVE_CACHE_TTL = 60  # seconds
+
+
+def get_live_games_cached(data):
+    now = time.time()
+    if _LIVE_CACHE["data"] is not None and now - _LIVE_CACHE["ts"] < LIVE_CACHE_TTL:
+        return _LIVE_CACHE["data"]
+
+    live = get_live_games(data)
+    _LIVE_CACHE["data"] = live
+    _LIVE_CACHE["ts"] = now
+    return live
+
+
+# --------------------
 # Helpers
 # --------------------
 
@@ -23,7 +46,7 @@ def build_time_window(mode: str):
     elif mode == "weekly":
         _, end = window_3am_to_3am_local()
         start = end - timedelta(days=7)
-    else:  # season
+    else:
         start = SEASON_START_LOCAL
         _, end = window_3am_to_3am_local()
     return start, end
@@ -36,9 +59,9 @@ def winrate_pct(solo, flex, aram):
 
 
 MODE_COLOR = {
-    "daily": 0x57F287,   # green
-    "weekly": 0x5865F2,  # blurple
-    "season": 0xFAA61A,  # gold
+    "daily": 0x57F287,
+    "weekly": 0x5865F2,
+    "season": 0xFAA61A,
 }
 
 
@@ -92,68 +115,37 @@ def build_dashboard_embed(mode: str):
 
         rows.append((riot_id, solo, flex, aram, mmr, wr))
 
-    # Sort by WR then MMR
-    rows.sort(
-        key=lambda r: ((r[5] or 0), (r[4] or 0)),
-        reverse=True,
-    )
+    rows.sort(key=lambda r: (r[5], r[4]), reverse=True)
 
-    # Section header
     embed.add_field(
         name="📊 Leaderboard",
-        value="Top performers for this period",
+        value="Top players ranked by **Winrate → MMR**",
         inline=False,
     )
 
-    # Limit rows for readability
-    for riot_id, solo, flex, aram, mmr, wr in rows[:9]:
+    # HARD LIMIT: 4 players max (6 fields per player = 24 fields)
+    for riot_id, solo, flex, aram, mmr, wr in rows[:4]:
         embed.add_field(
-            name="👤 Player",
-            value=f"**{riot_id}**",
-            inline=True,
-        )
-
-        embed.add_field(
-            name="🎮 Ranked",
+            name=f"👤 {riot_id}",
             value=(
-                f"Solo: **{solo['wins']}-{solo['losses']}** ({solo['kda']:.2f})\n"
-                f"Flex: **{flex['wins']}-{flex['losses']}** ({flex['kda']:.2f})"
+                f"**WR:** `{wr:.1f}%`   **ΔMMR:** `{mmr:+}`\n"
+                f"**Solo:** {solo['wins']}-{solo['losses']} ({solo['kda']:.2f})\n"
+                f"**Flex:** {flex['wins']}-{flex['losses']} ({flex['kda']:.2f})\n"
+                f"**ARAM:** {aram['wins']}-{aram['losses']} ({aram['kda']:.2f})"
             ),
-            inline=True,
-        )
-
-        embed.add_field(
-            name="🎲 ARAM",
-            value=f"{aram['wins']}-{aram['losses']} ({aram['kda']:.2f})",
-            inline=True,
-        )
-
-        embed.add_field(
-            name="📈 ΔMMR",
-            value=f"`{mmr:+}`",
-            inline=True,
-        )
-
-        embed.add_field(
-            name="🏆 WR%",
-            value=f"`{wr:.1f}%`",
-            inline=True,
-        )
-
-        # Spacer to force clean row wrapping
-        embed.add_field(name="\u200b", value="\u200b", inline=True)
-
-    # LIVE GAMES
-    live_games = get_live_games(data)
-    if live_games:
-        formatted = format_live_games(live_games)
-        embed.add_field(
-            name="🟢 LIVE GAMES",
-            value="\n".join(formatted[:5]),
             inline=False,
         )
 
-    embed.set_footer(text="Interactive dashboard • Updates live")
+    # LIVE GAMES (cached)
+    live_games = get_live_games_cached(data)
+    if live_games:
+        embed.add_field(
+            name="🟢 LIVE GAMES",
+            value="\n".join(format_live_games(live_games)[:5]),
+            inline=False,
+        )
+
+    embed.set_footer(text="Buttons update this message • Cached live data")
     return embed
 
 
@@ -165,26 +157,26 @@ class DashboardView(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=None)
 
+    async def _safe_update(self, interaction, mode):
+        try:
+            await interaction.response.edit_message(
+                embed=build_dashboard_embed(mode),
+                view=self,
+            )
+        except discord.NotFound:
+            pass  # interaction expired, ignore
+
     @discord.ui.button(label="Daily", style=discord.ButtonStyle.secondary)
     async def daily(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.response.edit_message(
-            embed=build_dashboard_embed("daily"),
-            view=self,
-        )
+        await self._safe_update(interaction, "daily")
 
     @discord.ui.button(label="Weekly", style=discord.ButtonStyle.primary)
     async def weekly(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.response.edit_message(
-            embed=build_dashboard_embed("weekly"),
-            view=self,
-        )
+        await self._safe_update(interaction, "weekly")
 
     @discord.ui.button(label="Season", style=discord.ButtonStyle.success)
     async def season(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.response.edit_message(
-            embed=build_dashboard_embed("season"),
-            view=self,
-        )
+        await self._safe_update(interaction, "season")
 
 
 # --------------------
@@ -194,5 +186,7 @@ class DashboardView(discord.ui.View):
 def setup(bot: commands.Bot):
     @bot.command(name="dashboarddemo")
     async def dashboarddemo(ctx):
-        embed = build_dashboard_embed("weekly")
-        await ctx.send(embed=embed, view=DashboardView())
+        await ctx.send(
+            embed=build_dashboard_embed("weekly"),
+            view=DashboardView(),
+        )
