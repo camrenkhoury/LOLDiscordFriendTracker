@@ -345,6 +345,15 @@ async def grieftracker_cmd(ctx, *, riot_id: str):
         lines.append(f"Player: `{riot_id}`")
         lines.append("")
 
+        # Average grief score (loss-weighted)
+        loss_games = [g for g in games if not g["win"]]
+        avg_grief = round(
+            sum(g["game_grief_points"] for g in loss_games) / max(1, len(loss_games)),
+            1
+        )
+
+        lines.append(f"Grief Score: **{avg_grief}** (avg per loss)")
+        lines.append("")
         lines.append("**Outcome Breakdown:**")
 
         def add(label, emoji):
@@ -353,6 +362,7 @@ async def grieftracker_cmd(ctx, *, riot_id: str):
                 lines.append(f"{emoji} **{label}**: {count}")
 
         add("CAKE WALK", "🟢")
+        add("FAIR WIN", "🟢")
         add("HARD CARRY", "🟡")
         add("GRIEFED", "🔴")
         add("INTER", "⚫")
@@ -369,13 +379,40 @@ async def grieftracker_cmd(ctx, *, riot_id: str):
         lines.append(
             "**How to read this:**\n"
             "• **CAKE WALK** → won with minimal resistance\n"
+            "• **FAIR WIN** → standard competitive win\n"
             "• **HARD CARRY** → won despite team grief\n"
             "• **GRIEFED** → lost despite playing well\n"
             "• **INTER** → losses driven primarily by own play\n"
             "• **LOST CAUSE** → games were statistically unwinnable\n\n"
-            "This analysis is based on *patterns across the last 10 games*, "
+            "This analysis reflects *patterns across the last 10 games*, "
             "not a single match."
         )
+
+        # --------------------
+        # Worst innocent game (griefed but not inting)
+        # --------------------
+        innocent_losses = []
+
+        for g in games:
+            label, _ = classify_game(g)
+            if not g["win"] and label in ("GRIEFED", "LOST CAUSE"):
+                neg = (
+                    g["components"].get("low_damage_grief", 0)
+                    + max(0, g["components"].get("vision_grief", 0))
+                )
+                if neg <= 5:
+                    innocent_losses.append(g)
+
+        if innocent_losses:
+            worst = max(innocent_losses, key=lambda x: x["game_grief_points"])
+
+            lines.append("")
+            lines.append("**Worst Innocent Game:**")
+            lines.append(
+                f"• **{worst['game_grief_points']} grief points** — "
+                f"Team DPM: {worst['team_dpm']} | "
+                f"You: {worst['player_dpm']}"
+            )
 
         await ctx.send("\n".join(lines))
 
