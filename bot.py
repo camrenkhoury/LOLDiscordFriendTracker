@@ -203,21 +203,28 @@ def classify_game(game):
     else:  # LOSS
         if team_impact >= 15 and player_positive > player_negative:
             return "GRIEFED", "🔴"
+
         if player_negative > player_positive:
             return "INTER", "⚫"
+
+        if team_impact < 10 and player_negative <= 5:
+            return "FAIR LOSS", "⚪"
+
         return "LOST CAUSE", "🟠"
 
 
-def summarize_games(games):
+
     counts = {
         "CAKE WALK": 0,
         "HARD CARRY": 0,
         "FAIR WIN": 0,
+        "FAIR LOSS": 0,
         "GRIEFED": 0,
         "INTER": 0,
         "BOOSTED": 0,
         "LOST CAUSE": 0,
     }
+
 
 
     for g in games:
@@ -387,6 +394,7 @@ async def grieftracker_cmd(ctx, *, riot_id: str):
             "**How to read this:**\n"
             "• **CAKE WALK** → won with minimal resistance\n"
             "• **FAIR WIN** → standard competitive win\n"
+            "• **FAIR LOSS** → close, competitive loss with no clear blame\n"
             "• **HARD CARRY** → won despite team grief\n"
             "• **GRIEFED** → lost despite playing well\n"
             "• **INTER** → losses driven primarily by own play\n"
