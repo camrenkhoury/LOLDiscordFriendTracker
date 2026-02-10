@@ -173,9 +173,9 @@ def build_leaderboard_rows(data, start, end):
 
     # Sort: WR → MMR → games
     rows.sort(
-    key=lambda r: (r[0], r[1]),
-    reverse=True)
-    
+        key=lambda r: (r[0] if r[0] is not None else -1, r[1]),
+        reverse=True
+    )
     return rows
 
 def update_player_rank_from_profile(player, info):
