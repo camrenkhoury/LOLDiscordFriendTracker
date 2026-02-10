@@ -164,7 +164,7 @@ def build_leaderboard_rows(data, start, end):
             flex,
             aram,
             mmr,
-            resolve_solo_tier(p),
+            solo_mmr,
             wr
         ))
 
