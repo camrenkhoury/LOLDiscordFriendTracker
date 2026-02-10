@@ -1458,9 +1458,9 @@ class DashboardView(discord.ui.View):
 @bot.command()
 async def dashboard(ctx):
     data = load_data()
-    start, end = get_time_window("weekly")
+    start, end = get_time_window("season")
     rows = build_leaderboard_rows(data, start, end)
-    content = render_dashboard(rows, "weekly", start, end)
+    content = render_dashboard(rows, "season", start, end)
 
     live = get_live_games(data)
     if live:
