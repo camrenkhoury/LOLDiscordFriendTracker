@@ -236,10 +236,7 @@ def render_dashboard(rows, mode, start, end):
         )
 
     lines.append("```")
-    lines.append(
-        "Legend: ⭐ Challenger 🔴 GM 🟣 Master 🔷 Diamond 🟢 Emerald "
-        "🔵 Plat 🟡 Gold ⚪ Silver 🟤 Bronze ⬛ Iron"
-    )
+
 
     return "\n".join(lines)
 
