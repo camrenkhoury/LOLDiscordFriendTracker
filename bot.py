@@ -91,7 +91,7 @@ def rank_icon(tier: str | None):
         "MASTER": "🟣",
         "GRANDMASTER": "🔴",
         "CHALLENGER": "⭐",
-    }.get(tier, "-")
+    }.get(tier, "⚫")
 
 def resolve_solo_tier(p: dict) -> str | None:
     # Preferred explicit field
