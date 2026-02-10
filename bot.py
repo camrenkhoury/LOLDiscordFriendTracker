@@ -91,7 +91,7 @@ def rank_icon(tier: str | None):
         "MASTER": "🟣",
         "GRANDMASTER": "🔴",
         "CHALLENGER": "⭐",
-    }.get(tier, "⚫")
+    }.get(tier, "-")
 
 def resolve_solo_tier(p: dict) -> str | None:
     # Preferred explicit field
@@ -974,7 +974,7 @@ async def dailyrecords(ctx):
         ))
 
     rows.sort(
-        key=lambda r: (r[0], r[1]),
+        key=lambda r: (r[0] if r[0] is not None else -1, r[1]),
         reverse=True
     )
 
