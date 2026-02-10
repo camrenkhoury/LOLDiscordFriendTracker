@@ -394,23 +394,30 @@ def classify_game(game):
         + abs(c.get("hard_carry_bonus", 0))
     )
 
+    player_contribution = (
+    c.get("player_relative_bonus", 0)
+    + c.get("objective_disparity", 0)
+    + abs(c.get("hard_carry_bonus", 0))
+    )
+
     win = game["win"]
 
     # ---- CLASSIFICATION ----
     if win:
-        if team_impact < 5 and player_negative <= 5:
-            return "CAKE WALK", "🟢"
+        if team_impact < 5 and player_negative <= 5 and player_contribution < 5:
+            return "CAKE WALK", "⚪"
+
         if team_impact >= 15 and player_positive > player_negative:
             return "HARD CARRY", "🟡"
+
         if player_negative > player_positive:
             return "BOOSTED", "🔵"
-        return "FAIR WIN", "🟢"
 
+        return "FAIR WIN", "🟢"
 
     else:  # LOSS
         if team_impact >= 12 and player_positive > player_negative:
             return "GRIEFED", "🔴"
-
 
         if player_negative > player_positive:
             return "INTER", "⚫"
@@ -419,7 +426,6 @@ def classify_game(game):
             return "FAIR LOSS", "⚪"
 
         return "LOST CAUSE", "🟠"
-
 
 def summarize_games(games):
     counts = {
