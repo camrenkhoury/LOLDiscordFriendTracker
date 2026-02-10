@@ -365,7 +365,6 @@ async def incremental_update_core(ctx=None, notify_channel_id: int | None = None
         for k in DASHBOARD_CACHE:
             DASHBOARD_CACHE[k] = None
 
-        update_player_rank_from_profile(p, info)
 
 
 
