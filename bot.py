@@ -968,7 +968,7 @@ async def dailyrecords(ctx):
         ))
 
     # Sort by Games -> WR -> MMR
-    rows.sort(key=lambda r: (r[0], r[7], r[5]), reverse=True)
+    rows.sort(key=lambda r: (r[5], r[7], r[0]), reverse=True)
 
 
     def wl(x): return f"{x['wins']}-{x['losses']}"
