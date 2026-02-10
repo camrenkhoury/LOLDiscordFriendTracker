@@ -155,6 +155,7 @@ def build_leaderboard_rows(data, start, end):
             mmr_delta_since(p, "solo", start.isoformat())
             + mmr_delta_since(p, "flex", start.isoformat())
         )
+        solo_mmr = p.get("mmr", {}).get("solo", {}).get("current")
 
         rows.append((
             total_games,
@@ -220,10 +221,10 @@ def render_dashboard(rows, mode, start, end):
         "-" * dash_len,
     ]
 
-    for _, riot_id, solo, flex, aram, mmr, tier, wr in rows:
-        solo_mmr = p.get("mmr", {}).get("solo", {}).get("current")
+    for _, riot_id, solo, flex, aram, mmr, solo_mmr, wr in rows:
         tier = tier_from_mmr(solo_mmr)
         icon = rank_icon(tier)
+
 
         lines.append(
             pad(f"{icon} {riot_id}", NAME_W) + " | "
@@ -731,6 +732,7 @@ async def playerinfo(ctx, *, riot_id: str):
     riot_key = f"{info['game_name']}#{info['tag_line']}"
 
     if riot_key in data["players"]:
+        # purely optional, informational only
         update_player_rank_from_profile(data["players"][riot_key], info)
         save_data(data)
 
