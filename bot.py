@@ -13,15 +13,8 @@ from mmrupdate import (
     mmr_delta_since,
 )
 
-DASHBOARD_CACHE = {
-    "daily": None,
-    "weekly": None,
-    "season": None,
-}
-
 
 from mmrupdate import update_all_mmrs
-
 
 from analytics import compute_top_duos
 from storage import load_data, save_data, upsert_player, now_utc_iso
@@ -45,6 +38,27 @@ from riot import (
 
 from config import DISCORD_TOKEN, COMMAND_PREFIX, TEST_CHANNEL_ID
 
+DASHBOARD_CACHE = {
+    "daily": None,
+    "weekly": None,
+    "season": None,
+}
+
+def tier_from_mmr(mmr: int | None) -> str | None:
+    if mmr is None:
+        return None
+
+    if mmr >= 4000: return "CHALLENGER"
+    if mmr >= 3600: return "GRANDMASTER"
+    if mmr >= 3200: return "MASTER"
+    if mmr >= 2800: return "DIAMOND"
+    if mmr >= 2400: return "EMERALD"
+    if mmr >= 2000: return "PLATINUM"
+    if mmr >= 1600: return "GOLD"
+    if mmr >= 1200: return "SILVER"
+    if mmr >= 800:  return "BRONZE"
+    return "IRON"
+
 # --------------------
 # Globals
 # --------------------
@@ -53,7 +67,6 @@ update_lock = asyncio.Lock()
 intents = discord.Intents.default()
 intents.message_content = True
 bot = commands.Bot(command_prefix=COMMAND_PREFIX, intents=intents)
-
 
 
 def wr_bar(wr: float):
@@ -208,7 +221,10 @@ def render_dashboard(rows, mode, start, end):
     ]
 
     for _, riot_id, solo, flex, aram, mmr, tier, wr in rows:
+        solo_mmr = p.get("mmr", {}).get("solo", {}).get("current")
+        tier = tier_from_mmr(solo_mmr)
         icon = rank_icon(tier)
+
         lines.append(
             pad(f"{icon} {riot_id}", NAME_W) + " | "
             + pad(wl(solo), WL_W) + " " + pad(kda(solo), KDA_W) + " | "
@@ -348,7 +364,7 @@ async def incremental_update_core(ctx=None, notify_channel_id: int | None = None
 
         for k in DASHBOARD_CACHE:
             DASHBOARD_CACHE[k] = None
-            
+
         update_player_rank_from_profile(p, info)
 
 
