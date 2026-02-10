@@ -227,7 +227,7 @@ def render_dashboard(rows, mode, start, end):
         "-" * dash_len,
     ]
 
-    for _, riot_id, solo, flex, aram, mmr, solo_mmr, wr in rows:
+    for solo_mmr, total_games, riot_id, solo, flex, aram, mmr, wr in rows:
         tier = tier_from_mmr(solo_mmr)
         icon = rank_icon(tier)
 
