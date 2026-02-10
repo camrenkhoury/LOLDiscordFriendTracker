@@ -131,6 +131,8 @@ def build_leaderboard_rows(data, start, end):
 
         solo = compute_wl_kda(matches, puuid, 420, start, end)
         flex = compute_wl_kda(matches, puuid, 440, start, end)
+        solo_mmr = p.get("mmr", {}).get("solo", {}).get("current", 0)
+
 
         aram = {"games": 0, "wins": 0, "losses": 0, "kda": 0.0}
         weight = 0
@@ -158,18 +160,22 @@ def build_leaderboard_rows(data, start, end):
         solo_mmr = p.get("mmr", {}).get("solo", {}).get("current")
 
         rows.append((
-            total_games,
-            riot_id,
-            solo,
-            flex,
-            aram,
-            mmr,
-            solo_mmr,
-            wr
+            solo_mmr,           # r[0] ← rank
+            total_games,        # r[1]
+            riot_id,            # r[2]
+            solo,               # r[3]
+            flex,               # r[4]
+            aram,               # r[5]
+            mmr,                # r[6] ← ΔMMR (unchanged)
+            wr                  # r[7]
         ))
 
+
     # Sort: WR → MMR → games
-    rows.sort(key=lambda r: (r[7], r[5], r[0]), reverse=True)
+    rows.sort(
+    key=lambda r: (r[0], r[1]),
+    reverse=True)
+    
     return rows
 
 def update_player_rank_from_profile(player, info):
