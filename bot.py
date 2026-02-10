@@ -81,9 +81,9 @@ def rank_icon(tier: str | None):
 
     tier = tier.upper()
     return {
-        "IRON": "⬛",
+        "IRON": "⚪",
         "BRONZE": "🟤",
-        "SILVER": "⚪",
+        "SILVER": "🔘",
         "GOLD": "🟡",
         "PLATINUM": "🔵",
         "EMERALD": "🟢",
