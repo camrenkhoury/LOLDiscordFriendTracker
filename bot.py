@@ -539,10 +539,10 @@ async def grieftracker_cmd(ctx, *, riot_id: str):
         match_ids = data.get("player_match_index", {}).get(riot_id, [])
         matches = [
             data["matches"][mid]
-            for mid in match_ids
+            for mid in reversed(match_ids)
             if mid in data.get("matches", {})
+            and data["matches"][mid]["info"].get("queueId") == 420
         ]
-
         if not matches:
             await ctx.send("No stored matches found. Try `!updaterecords`.")
             return
