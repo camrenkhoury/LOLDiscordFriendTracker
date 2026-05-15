@@ -14,6 +14,30 @@ ARAM_QUEUES = {
     # add event queues here once confirmed
 }
 
+QUEUE_NAMES = {
+    400: "Draft Pick",
+    420: "Solo/Duo",
+    440: "Flex",
+    450: "ARAM",
+    700: "Clash",
+    900: "URF",
+    1020: "One for All",
+    1300: "Nexus Blitz",
+    1400: "Ultimate Spellbook",
+    1700: "Arena",
+    2400: "ARAM",
+}
+
+
+def queue_name(queue_id):
+    if queue_id is None:
+        return "Unknown"
+    try:
+        qid = int(queue_id)
+    except (TypeError, ValueError):
+        return str(queue_id)
+    return QUEUE_NAMES.get(qid, f"Queue {qid}")
+
 # --------------------
 # Time windows (3AM -> 3AM local)
 # --------------------
@@ -62,12 +86,9 @@ def _game_start_local(m):
         # LAST RESORT: allow match ingestion even if timing is unknown
         return None
 
-    # Riot timestamps are ms
-    from datetime import datetime
-    import pytz
-
-    dt_utc = datetime.utcfromtimestamp(ts / 1000).replace(tzinfo=pytz.UTC)
-    return dt_utc.astimezone()
+    # Riot timestamps are Unix milliseconds in UTC.
+    dt_utc = datetime.fromtimestamp(ts / 1000, tz=timezone.utc)
+    return dt_utc.astimezone(LOCAL_TZ)
 
 # --------------------
 # Core stat computation

@@ -1,19 +1,39 @@
-!addsummoner <Name#TAG> Adds a player to the tracked pool using their Riot ID. Initializes profile, match tracking, and MMR.
+!addsummoner <Name#TAG> Adds or refreshes a tracked player.
 
 !playerlist Lists all currently tracked players.
 
-!playerinfo <Name#TAG> Shows rank, recent KDA, top mastery champions, and recent Solo/Duo champions for the player.
+!removesummoner <Name#TAG> Removes a player from tracking while keeping cached match payloads.
 
-!updaterecords Manually fetches new matches for all players and updates stored stats and MMR.
+!status Shows cache health, last update time, missing match details, duplicate refs, and top queues.
 
-!updateseason Backfills all matches since the start of the season. Slow and intended for setup or resets.
+!repaircache [true] Deduplicates player match indexes. Passing true also prunes refs missing match payloads.
 
-!dailyrecords Shows group stats for the current day (3AM → 3AM local), including W/L, KDA, and MMR change.
+!commands Shows the in-Discord command reference.
 
-!weeklyrecords Shows group stats for the last 7 days, same format as daily records.
+!playerinfo <Name#TAG> Shows rank, recent KDA, top mastery champions, and recent Solo/Duo champions.
 
-!topduos Shows the best-performing Solo/Duo pairs, sorted by winrate, with a minimum game requirement.
+!recentgames <Name#TAG> [count] Shows cached recent games for a tracked player.
 
-!topflexstacks Shows the top-performing Flex 5-stacks since the start of the season.
+!streaks [all|solo|flex|aram] Shows current cached win/loss streaks.
 
-!debugrecentqueues Lists all queue IDs currently stored in match data for debugging and verification.
+!updaterecords Fetches recent matches for all players and updates stored stats and MMR.
+
+!updateseason Backfills all matches since season start. Slow and intended for setup or resets.
+
+!dailyrecords Shows group stats for the current 3AM to 3AM local day.
+
+!weeklyrecords Shows group stats for the last 7 days.
+
+!seasonrecords Shows group stats since season start.
+
+!dashboard Shows an interactive Daily/Weekly/Season dashboard.
+
+!topduos [min_games] Shows best-performing Solo/Duo pairs, sorted by winrate and games.
+
+!topchamps [all|solo|flex|aram] [min_games] Shows group champion performance from cached games.
+
+!topflexstacks Shows top-performing tracked Flex 5-stacks since season start.
+
+!grieftracker <Name#TAG> Shows Solo/Duo grief-impact analysis for recent cached games.
+
+!debugrecentqueues Lists queue IDs currently stored in match data for debugging.

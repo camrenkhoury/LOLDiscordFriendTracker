@@ -1,5 +1,13 @@
-config.py
-league.json
-__pycache__/
-*.pyc
 .env
+.env.*
+!.env.example
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*.log
+.dist/
+league.json
+league.json.tmp
+league.json.bak
+IMPROVEMENT_PLAN.md

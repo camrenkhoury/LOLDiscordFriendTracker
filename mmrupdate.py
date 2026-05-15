@@ -80,6 +80,10 @@ def record_mmr_snapshot(player, queue, mmr_value):
     now = now_utc_iso()
 
     mmr[queue]["current"] = mmr_value
+    history = mmr[queue]["history"]
+    if history and history[-1][1] == mmr_value:
+        return
+
     mmr[queue]["history"].append([now, mmr_value])
 
     # Keep history bounded (last 90 days-ish)

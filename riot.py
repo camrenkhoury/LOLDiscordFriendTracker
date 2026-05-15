@@ -1,4 +1,5 @@
 # riot.py
+import random
 import time
 import urllib.parse
 from typing import Any, Dict, List, Optional
@@ -7,8 +8,6 @@ import requests
 from config import RIOT_API_KEY, REGION, PLATFORM
 
 DEFAULT_TIMEOUT = 10
-
-BASE_HEADERS = {"X-Riot-Token": RIOT_API_KEY}
 
 # Keep under burst limits when looping match details
 MATCH_DETAIL_SLEEP_SEC = 0.06
@@ -21,6 +20,12 @@ _DDRAGON_ID_TO_NAME: Optional[Dict[int, str]] = None  # champId -> champName
 # --------------------
 # Core HTTP helpers
 # --------------------
+def _headers() -> Dict[str, str]:
+    if not RIOT_API_KEY:
+        raise RuntimeError("RIOT_API_KEY is not configured")
+    return {"X-Riot-Token": RIOT_API_KEY}
+
+
 def _handle_response(r: requests.Response) -> Any:
     if r.status_code in (400, 401, 403, 404, 429):
         raise RuntimeError(
@@ -35,19 +40,43 @@ def _handle_response(r: requests.Response) -> Any:
     return r.text
 
 
+def _retry_delay(response: requests.Response | None, attempt: int) -> float:
+    if response is not None:
+        retry_after = response.headers.get("Retry-After")
+        if retry_after:
+            try:
+                return max(0.0, float(retry_after))
+            except ValueError:
+                pass
+
+    return min(30.0, (2 ** attempt) + random.uniform(0.0, 0.25))
+
+
 def _request_with_retry(url: str, max_retries: int = 6) -> Any:
     """
-    GET with basic 429 retry. Raises on other non-2xx statuses (via _handle_response).
+    GET with retry for Riot rate limits, transient server errors, and network hiccups.
     """
-    for _ in range(max_retries):
-        r = requests.get(url, headers=BASE_HEADERS, timeout=DEFAULT_TIMEOUT)
-        if r.status_code == 429:
-            ra = r.headers.get("Retry-After")
-            wait = int(ra) if (ra and ra.isdigit()) else 2
-            time.sleep(wait)
+    last_error: Exception | None = None
+
+    for attempt in range(max_retries):
+        try:
+            r = requests.get(url, headers=_headers(), timeout=DEFAULT_TIMEOUT)
+        except requests.RequestException as exc:
+            last_error = exc
+            if attempt == max_retries - 1:
+                break
+            time.sleep(_retry_delay(None, attempt))
             continue
+
+        if r.status_code == 429 or 500 <= r.status_code < 600:
+            if attempt == max_retries - 1:
+                return _handle_response(r)
+            time.sleep(_retry_delay(r, attempt))
+            continue
+
         return _handle_response(r)
-    raise RuntimeError(f"HTTP 429 too many retries for {url}")
+
+    raise RuntimeError(f"Request failed after {max_retries} retries for {url}: {last_error}")
 
 
 def _get(url: str) -> Any:
@@ -284,7 +313,7 @@ def get_active_game(puuid: str) -> Optional[Dict[str, Any]]:
       - None if not in game (404)
     """
     url = f"https://{_platform_host()}.api.riotgames.com/lol/spectator/v5/active-games/by-summoner/{puuid}"
-    r = requests.get(url, headers=BASE_HEADERS, timeout=DEFAULT_TIMEOUT)
+    r = requests.get(url, headers=_headers(), timeout=DEFAULT_TIMEOUT)
     if r.status_code == 404:
         return None
     return _handle_response(r)
